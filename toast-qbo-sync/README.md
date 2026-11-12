@@ -90,9 +90,11 @@ Copy the **Client ID** and **Client secret**.
    zone to your restaurants' zone.
 3. Replace `appsscript.json` with the one in this folder. It adds the
    `OAuth2` library and the required permissions.
-4. Create one script file per file in `src/` (same names, same contents).
-   Or with [clasp](https://github.com/google/clasp): copy `.clasp.json.example`
-   to `.clasp.json`, put in your script ID, and run `clasp push` from this folder.
+4. Open `Code.gs` in the editor, delete what's there, and paste in the whole
+   of [`dist/Code.gs`](dist/Code.gs). Then edit the `CONFIG` block at the top.
+   (Alternative: [clasp](https://github.com/google/clasp). Copy
+   `.clasp.json.example` to `.clasp.json`, add your script ID, and run
+   `clasp push` from this folder.)
 5. **Project Settings → Script Properties**, add:
    `TOAST_CLIENT_ID`, `TOAST_CLIENT_SECRET`, `QBO_CLIENT_ID`, `QBO_CLIENT_SECRET`.
 
@@ -117,7 +119,7 @@ Copy the **Client ID** and **Client secret**.
    - `Toast Checking`: Bank, if you use a Toast checking sweep.
    - `Toast Withholdings - Unallocated` and `Toast Reconciliation Differences`:
      both should normally stay at $0.
-2. Edit `src/Config.js` (accounts, per-location Location/Class, withholding
+2. Edit the `CONFIG` block (accounts, per-location Location/Class, withholding
    rules, payout splits).
 3. Run **`checkSetup`**. It lists every Toast location with its GUID and
    confirms every account name exists in QuickBooks. Fix anything it lists.
@@ -149,7 +151,7 @@ that folder's ID. This script then writes one `qbo-posted-…json` per payout.
 
 ## Development
 ```
-npm test        # 25 unit tests, Node 18+, no dependencies
+npm test        # rebuilds dist/Code.gs, then runs the unit tests (Node 18+, no dependencies)
 ```
 `src/` is plain Apps Script (one shared global scope). `test/harness.js`
 loads it into a Node VM with fake Toast/QuickBooks HTTP.

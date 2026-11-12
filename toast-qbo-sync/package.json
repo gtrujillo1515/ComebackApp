@@ -4,6 +4,7 @@
   "private": true,
   "description": "Books daily Toast payouts into QuickBooks Online (Google Apps Script).",
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "test": "node scripts/bundle.js && node --test test/*.test.js",
+    "bundle": "node scripts/bundle.js"
   }
 }
