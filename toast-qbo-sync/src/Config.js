@@ -1,0 +1,128 @@
+/**
+ * ============================================================================
+ *  CONFIGURATION: edit this file for your business.
+ * ============================================================================
+ *
+ * Secrets (API keys) do NOT go here. Put them in Project Settings ->
+ * Script Properties:
+ *   TOAST_CLIENT_ID, TOAST_CLIENT_SECRET   (Toast Analytics API credential)
+ *   QBO_CLIENT_ID,   QBO_CLIENT_SECRET     (Intuit developer app keys)
+ *
+ * Account / class / location names below must match QuickBooks exactly
+ * (case-insensitive). Sub-accounts can be written "Parent:Child".
+ * Run `checkSetup` after editing; it lists anything QuickBooks can't find.
+ */
+var CONFIG = {
+  toast: {
+    apiHost: 'https://ws-api.toasttab.com',
+    // Restaurant GUIDs to include. Empty = every location the credential sees.
+    // Run `checkSetup` to print the GUID and name of each location.
+    restaurantIds: [],
+  },
+
+  qbo: {
+    environment: 'production', // 'production' or 'sandbox'
+    minorVersion: 75,
+  },
+
+  sync: {
+    // Start in dry-run. Nothing is written to QuickBooks until this is false.
+    dryRun: true,
+
+    // Each run re-checks this many past settled dates and posts anything that
+    // is missing. Already-posted payouts are detected and skipped, so missed
+    // runs heal themselves.
+    lookbackDays: 7,
+
+    // Toast payout statuses that are safe to post. NONE = failed payout.
+    postStatuses: ['SENT', 'CAPTURED'],
+
+    // 'deposit' (recommended: matches the bank feed line directly) or
+    // 'journal'. Payouts that net to zero or below always use a journal entry.
+    postingMode: 'deposit',
+
+    // QuickBooks transaction date = Toast settled date + this many days.
+    // Use 1 if your bank shows Toast deposits the day after Toast settles.
+    txnDateOffsetDays: 0,
+
+    // If Toast's per-payment detail doesn't add up to the payout's card total
+    // within this many cents, the payout is HELD (not posted) and you get an
+    // alert. It is retried automatically on the next run.
+    reconcileToleranceCents: 100,
+
+    // Hour of day (script time zone) for the automatic daily run.
+    triggerHour: 9,
+
+    // Where alerts and summaries go. Blank = the Google account running this.
+    alertEmail: '',
+    sendDailySummary: true,
+
+    // Optional Drive folder ID for a JSON audit file per payout. Blank = off.
+    auditFolderId: '',
+
+    // Apps Script stops a run after 6 minutes; we stop starting new work at
+    // this point and finish the rest on the next run.
+    timeBudgetMs: 4.5 * 60 * 1000,
+  },
+
+  /**
+   * Default QuickBooks accounts. Every location uses these unless it has an
+   * override in `locations` below.
+   */
+  accounts: {
+    deposit: 'Business Checking',         // bank account Toast pays into
+    sales: 'Sales',                        // income: food & beverage sales
+    salesTax: 'Sales Tax Payable - Toast', // liability (see README: don't use QBO's automated sales-tax account)
+    tips: 'Tips Payable',                  // liability: card tips owed to staff
+    gratuity: 'Tips Payable',              // liability: auto-gratuity / service charges paid to staff
+    refunds: 'Refunds',                    // contra-income
+    fees: 'Merchant Processing Fees',      // expense: card processing fees
+    unallocatedWithholding: 'Toast Withholdings - Unallocated', // anything the rules below don't explain
+    reconciliationDifference: 'Toast Reconciliation Differences', // penny rounding from Toast
+  },
+
+  /**
+   * Optional per-location settings, keyed by restaurant GUID or by the exact
+   * Toast restaurant name. All fields are optional.
+   *
+   *   'Stacks Burgers - Tacoma': {
+   *     department: 'Tacoma',        // QuickBooks Location
+   *     class: 'Restaurant',         // QuickBooks Class
+   *     defaultTaxRate: 0.103,       // used only if Toast has no tax detail for a check
+   *     accounts: { sales: 'Sales:Tacoma', deposit: 'Tacoma Checking' },
+   *   },
+   */
+  locations: {},
+
+  /**
+   * Toast reports every withholding (Toast Capital, equipment lease / Easy
+   * Pay, Instant Deposit, etc.) as ONE combined amount per payout. These rules
+   * split it into the right accounts. They run in order:
+   *   method 'fixed'     -> a set dollar amount per payout (equipment leases)
+   *   method 'percent'   -> percent of `percentOf` ('payment' = card sales,
+   *                         'withholding' = total withheld)
+   *   method 'remainder' -> whatever is left (use this for Toast Capital)
+   * Any amount still left goes to accounts.unallocatedWithholding and you get
+   * an alert.
+   * `locations`: ['*'] for all, or a list of GUIDs / restaurant names.
+   * `startDate` / `endDate` (YYYYMMDD, optional) limit when a rule applies.
+   */
+  withholdingRules: [
+    // Example: daily equipment lease payment on the Tacoma location.
+    // { name: 'Equipment lease (Easy Pay)', account: 'Toast Equipment Lease', method: 'fixed', amount: 25.00,
+    //   locations: ['Stacks Burgers - Tacoma'], startDate: '20250101', endDate: '20270101' },
+    { name: 'Toast Capital loan repayment', account: 'Toast Capital Loan', method: 'remainder', locations: ['*'] },
+  ],
+
+  /**
+   * Money taken out of the payout AFTER withholdings, before it reaches your
+   * outside bank: for example, a portion swept into a Toast checking account.
+   * Each split becomes a transfer line to that QuickBooks account, and the
+   * deposit to `accounts.deposit` is reduced by the same amount.
+   *   method 'fixed'   -> `amount` dollars per payout
+   *   method 'percent' -> `percent` percent of the payout
+   */
+  payoutSplits: [
+    // { name: 'Toast checking', account: 'Toast Checking', method: 'percent', percent: 10, locations: ['*'] },
+  ],
+};

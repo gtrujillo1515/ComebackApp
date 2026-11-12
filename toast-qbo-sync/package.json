@@ -1,0 +1,9 @@
+{
+  "name": "toast-qbo-sync",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Books daily Toast payouts into QuickBooks Online (Google Apps Script).",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
