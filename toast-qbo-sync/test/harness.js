@@ -33,7 +33,17 @@ function load(overrides = {}) {
 /** Deep copy of CONFIG from the context with overrides merged per section. */
 function config(ctx, patch = {}) {
   const base = JSON.parse(JSON.stringify(ctx.CONFIG));
-  base.toast.restaurantIds = []; // tests use fake GUIDs; real ones live in Config.js
+  // Tests use fixed settings so they don't change when the business's Config.js does.
+  base.toast.restaurantIds = [];
+  base.accounts = {
+    deposit: 'Business Checking', sales: 'Sales', salesTax: 'Sales Tax Payable - Toast', tips: 'Tips Payable',
+    gratuity: 'Tips Payable', refunds: 'Refunds', fees: 'Merchant Processing Fees',
+    unallocatedWithholding: 'Toast Withholdings - Unallocated', reconciliationDifference: 'Toast Reconciliation Differences',
+  };
+  base.locations = {};
+  base.withholdingRules = [{ name: 'Toast Capital', account: 'Toast Capital Loan', method: 'remainder', locations: ['*'] }];
+  base.payoutSplits = [];
+  base.sync = { ...base.sync, dryRun: true, postingMode: 'deposit', txnDateOffsetDays: 0, reconcileToleranceCents: 100 };
   for (const k of Object.keys(patch)) {
     if (patch[k] && typeof patch[k] === 'object' && !Array.isArray(patch[k]) && base[k] && typeof base[k] === 'object') {
       base[k] = { ...base[k], ...patch[k] };

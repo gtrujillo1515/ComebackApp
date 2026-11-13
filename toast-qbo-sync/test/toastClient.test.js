@@ -34,7 +34,8 @@ test('polls through 202 responses until the report is ready (the old job treated
   const ctx = load({ fetch: f.fetch });
   const client = new ctx.ToastClient(config(ctx));
   const out = client.getSettledPayouts('20261110', '20261110');
-  assert.deepEqual(plain(out), rows);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].payoutAmount, 10);
   assert.equal(ctx.sleeps.length, 2);
   const post = f.calls.find((c) => c.method === 'post' && c.url.includes('/era/v1/payout/day'));
   assert.deepEqual(post.body, { restaurantIds: [], excludedRestaurantIds: [], startDate: '20261110', endDate: '20261110' });
@@ -59,7 +60,8 @@ test('re-requests the report when Toast answers 409', () => {
   ]);
   const ctx = load({ fetch: f.fetch });
   const out = new ctx.ToastClient(config(ctx)).getSettledPayouts('20261110', '20261110');
-  assert.deepEqual(plain(out), [{ a: 1 }]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].a, 1);
 });
 
 test('refreshes the Toast token once on 401', () => {
@@ -109,4 +111,18 @@ test('spaces out POSTs to the 5-per-minute endpoints', () => {
   client.getChecksForBusinessDate('20261109'); // cached, no request
   assert.equal(f.calls.filter((c) => c.method === 'post' && c.url.includes('/check/day')).length, 2);
   assert.ok(ctx.sleeps.some((ms) => ms >= 12000), 'expected a rate-limit pause between POSTs');
+});
+
+test('replaces the brand-only payout name with the full location name', () => {
+  const f = fakeFetch([
+    ['post', /\/era\/v1\/payout\/day$/, () => ({ code: 200, text: JSON.stringify(GUID1) })],
+    ['get', new RegExp('/era/v1/payout/' + GUID1), () => ({ code: 200, text: JSON.stringify([
+      { restaurantGuid: 'a', restaurantName: 'Stacks Burgers', restaurantLocationName: null },
+      { restaurantGuid: 'b', restaurantName: 'Stacks Burgers', restaurantLocationName: 'Tacoma' },
+    ]) })],
+    ['get', /restaurants-information/, () => ({ code: 200, text: JSON.stringify([{ restaurantGuid: 'a', restaurantName: 'Stacks Burgers  - Truck 2' }]) })],
+  ]);
+  const ctx = load({ fetch: f.fetch });
+  const rows = new ctx.ToastClient(config(ctx)).getSettledPayouts('20261110', '20261110');
+  assert.deepEqual(plain(rows.map((r) => r.restaurantName)), ['Stacks Burgers - Truck 2', 'Stacks Burgers - Tacoma']);
 });

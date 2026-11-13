@@ -78,7 +78,9 @@ function listQuickBooksAccounts() {
   var lines = rows.map(function (a) {
     return a.AccountType + ' | ' + a.FullyQualifiedName + ' | ' + formatMoney(toCents(a.CurrentBalance || 0));
   });
-  Logger.log(rows.length + ' active QuickBooks accounts (type | name | balance):\n' + lines.join('\n'));
+  // Apps Script truncates very long log lines, so print in chunks.
+  Logger.log(rows.length + ' active QuickBooks accounts (type | name | balance):');
+  for (var i = 0; i < lines.length; i += 40) Logger.log(lines.slice(i, i + 40).join('\n'));
 }
 
 /** Print the last 14 days of Toast payouts per location: card sales, refunds, fees, withholdings, payout. */
@@ -93,10 +95,13 @@ function showRecentPayouts() {
   var lines = rows.map(function (r) {
     return [String(r.restaurantName).trim(), ymdToIso(r.settledDate), 'card ' + formatMoney(toCents(r.paymentAmount)),
       'refunds ' + formatMoney(toCents(r.refundAmount)), 'fees ' + formatMoney(toCents(r.totalFeeAmount)),
-      'withheld ' + formatMoney(toCents(r.withholdingAmount)), 'payout ' + formatMoney(toCents(r.payoutAmount)),
+      'withheld ' + formatMoney(toCents(r.withholdingAmount)) +
+        (toCents(r.paymentAmount) ? ' (' + (100 * toCents(r.withholdingAmount) / toCents(r.paymentAmount)).toFixed(2) + '% of card)' : ''),
+      'payout ' + formatMoney(toCents(r.payoutAmount)),
       r.payoutStatus].join(' | ');
   });
-  Logger.log(rows.length + ' Toast payouts, last 14 settled days:\n' + lines.join('\n'));
+  Logger.log(rows.length + ' Toast payouts, last 14 settled days:');
+  for (var i = 0; i < lines.length; i += 40) Logger.log(lines.slice(i, i + 40).join('\n'));
 }
 
 /** Every QuickBooks name the config refers to, for checkSetup. */

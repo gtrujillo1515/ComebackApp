@@ -81,15 +81,15 @@ var CONFIG = {
    * override in `locations` below.
    */
   accounts: {
-    deposit: 'Business Checking',         // bank account Toast pays into
+    deposit: 'Business Basic Checking (8410) - 4', // bank account Toast pays into (TO CONFIRM)
     sales: 'Sales',                        // income: food & beverage sales
-    salesTax: 'Sales Tax Payable - Toast', // liability (see README: don't use QBO's automated sales-tax account)
-    tips: 'Tips Payable',                  // liability: card tips owed to staff
+    salesTax: 'Sales Tax Payable - Toast', // liability (TO CONFIRM: name of your sales tax liability account)
+    tips: 'Tips Payable',                  // liability (TO CONFIRM: card tips owed to staff)
     gratuity: 'Tips Payable',              // liability: auto-gratuity / service charges paid to staff
-    refunds: 'Refunds',                    // contra-income
-    fees: 'Merchant Processing Fees',      // expense: card processing fees
-    unallocatedWithholding: 'Toast Withholdings - Unallocated', // anything the rules below don't explain
-    reconciliationDifference: 'Toast Reconciliation Differences', // penny rounding from Toast
+    refunds: 'Refunds & Discounts',        // contra-income
+    fees: 'Bank Charges & Fees',           // expense: card processing fees
+    unallocatedWithholding: 'Bookkeeping Suspense - Unresolved Balances', // anything the rules below don't explain
+    reconciliationDifference: 'Bookkeeping Suspense - Unresolved Balances', // penny rounding from Toast
   },
 
   /**
@@ -122,7 +122,10 @@ var CONFIG = {
     // Example: daily equipment lease payment on the Tacoma location.
     // { name: 'Equipment lease (Easy Pay)', account: 'Toast Equipment Lease', method: 'fixed', amount: 25.00,
     //   locations: ['Stacks Burgers - Tacoma'], startDate: '20250101', endDate: '20270101' },
-    { name: 'Toast Capital loan repayment', account: 'Toast Capital Loan', method: 'remainder', locations: ['*'] },
+    // PROVISIONAL until confirmed against a Toast Payout Details report:
+    // about half of each day's card sales is swept to Toast checking, the rest is Toast Capital.
+    { name: 'Sweep to Toast checking', account: 'Toast Checking (3569)', method: 'percent', percent: 50, percentOf: 'payment', locations: ['*'] },
+    { name: 'Toast Capital loan repayment', account: 'Toast Capital loan', method: 'remainder', locations: ['*'] },
   ],
 
   /**
@@ -219,7 +222,9 @@ function listQuickBooksAccounts() {
   var lines = rows.map(function (a) {
     return a.AccountType + ' | ' + a.FullyQualifiedName + ' | ' + formatMoney(toCents(a.CurrentBalance || 0));
   });
-  Logger.log(rows.length + ' active QuickBooks accounts (type | name | balance):\n' + lines.join('\n'));
+  // Apps Script truncates very long log lines, so print in chunks.
+  Logger.log(rows.length + ' active QuickBooks accounts (type | name | balance):');
+  for (var i = 0; i < lines.length; i += 40) Logger.log(lines.slice(i, i + 40).join('\n'));
 }
 
 /** Print the last 14 days of Toast payouts per location: card sales, refunds, fees, withholdings, payout. */
@@ -234,10 +239,13 @@ function showRecentPayouts() {
   var lines = rows.map(function (r) {
     return [String(r.restaurantName).trim(), ymdToIso(r.settledDate), 'card ' + formatMoney(toCents(r.paymentAmount)),
       'refunds ' + formatMoney(toCents(r.refundAmount)), 'fees ' + formatMoney(toCents(r.totalFeeAmount)),
-      'withheld ' + formatMoney(toCents(r.withholdingAmount)), 'payout ' + formatMoney(toCents(r.payoutAmount)),
+      'withheld ' + formatMoney(toCents(r.withholdingAmount)) +
+        (toCents(r.paymentAmount) ? ' (' + (100 * toCents(r.withholdingAmount) / toCents(r.paymentAmount)).toFixed(2) + '% of card)' : ''),
+      'payout ' + formatMoney(toCents(r.payoutAmount)),
       r.payoutStatus].join(' | ');
   });
-  Logger.log(rows.length + ' Toast payouts, last 14 settled days:\n' + lines.join('\n'));
+  Logger.log(rows.length + ' Toast payouts, last 14 settled days:');
+  for (var i = 0; i < lines.length; i += 40) Logger.log(lines.slice(i, i + 40).join('\n'));
 }
 
 /** Every QuickBooks name the config refers to, for checkSetup. */
@@ -906,6 +914,35 @@ function parseReportRows(text) {
   throw new Error('Unexpected report body: ' + String(text).slice(0, 200));
 }
 
+/**
+ * Full location names keyed by restaurant GUID. The payout reports often give
+ * only the brand ("Stacks Burgers") in restaurantName, which can't tell
+ * locations apart, so we use the names from restaurants-information.
+ */
+ToastClient.prototype.getLocationNames = function () {
+  if (!this.locationNames) {
+    var names = {};
+    try {
+      this.getRestaurants().forEach(function (r) {
+        names[r.restaurantGuid] = String(r.restaurantName || '').trim().replace(/\s+/g, ' ');
+      });
+    } catch (e) {
+      Runtime.log('Could not load Toast location names: ' + e.message);
+    }
+    this.locationNames = names;
+  }
+  return this.locationNames;
+};
+
+/** Best human name for a report row: full location name, else brand + location. */
+ToastClient.prototype.locationName = function (row) {
+  var full = this.getLocationNames()[row.restaurantGuid];
+  if (full) return full;
+  var brand = String(row.restaurantName || '').trim();
+  var loc = String(row.restaurantLocationName || '').trim();
+  return (loc && brand.indexOf(loc) < 0 ? brand + ' - ' + loc : brand).replace(/\s+/g, ' ');
+};
+
 /** Settled-date payout rows for an inclusive date range (any length). */
 ToastClient.prototype.getSettledPayouts = function (startYmd, endYmd) {
   var self = this;
@@ -915,6 +952,10 @@ ToastClient.prototype.getSettledPayouts = function (startYmd, endYmd) {
     var part = self.runReport('/era/v1/payout/' + range, '/era/v1/payout',
       self.reportBody_({ startDate: ch.start, endDate: ch.end }), false);
     rows = rows.concat(part);
+  });
+  rows.forEach(function (r) {
+    r.toastBrandName = r.restaurantName;
+    r.restaurantName = self.locationName(r);
   });
   return rows;
 };

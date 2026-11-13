@@ -134,6 +134,35 @@ function parseReportRows(text) {
   throw new Error('Unexpected report body: ' + String(text).slice(0, 200));
 }
 
+/**
+ * Full location names keyed by restaurant GUID. The payout reports often give
+ * only the brand ("Stacks Burgers") in restaurantName, which can't tell
+ * locations apart, so we use the names from restaurants-information.
+ */
+ToastClient.prototype.getLocationNames = function () {
+  if (!this.locationNames) {
+    var names = {};
+    try {
+      this.getRestaurants().forEach(function (r) {
+        names[r.restaurantGuid] = String(r.restaurantName || '').trim().replace(/\s+/g, ' ');
+      });
+    } catch (e) {
+      Runtime.log('Could not load Toast location names: ' + e.message);
+    }
+    this.locationNames = names;
+  }
+  return this.locationNames;
+};
+
+/** Best human name for a report row: full location name, else brand + location. */
+ToastClient.prototype.locationName = function (row) {
+  var full = this.getLocationNames()[row.restaurantGuid];
+  if (full) return full;
+  var brand = String(row.restaurantName || '').trim();
+  var loc = String(row.restaurantLocationName || '').trim();
+  return (loc && brand.indexOf(loc) < 0 ? brand + ' - ' + loc : brand).replace(/\s+/g, ' ');
+};
+
 /** Settled-date payout rows for an inclusive date range (any length). */
 ToastClient.prototype.getSettledPayouts = function (startYmd, endYmd) {
   var self = this;
@@ -143,6 +172,10 @@ ToastClient.prototype.getSettledPayouts = function (startYmd, endYmd) {
     var part = self.runReport('/era/v1/payout/' + range, '/era/v1/payout',
       self.reportBody_({ startDate: ch.start, endDate: ch.end }), false);
     rows = rows.concat(part);
+  });
+  rows.forEach(function (r) {
+    r.toastBrandName = r.restaurantName;
+    r.restaurantName = self.locationName(r);
   });
   return rows;
 };

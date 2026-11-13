@@ -77,15 +77,15 @@ var CONFIG = {
    * override in `locations` below.
    */
   accounts: {
-    deposit: 'Business Checking',         // bank account Toast pays into
+    deposit: 'Business Basic Checking (8410) - 4', // bank account Toast pays into (TO CONFIRM)
     sales: 'Sales',                        // income: food & beverage sales
-    salesTax: 'Sales Tax Payable - Toast', // liability (see README: don't use QBO's automated sales-tax account)
-    tips: 'Tips Payable',                  // liability: card tips owed to staff
+    salesTax: 'Sales Tax Payable - Toast', // liability (TO CONFIRM: name of your sales tax liability account)
+    tips: 'Tips Payable',                  // liability (TO CONFIRM: card tips owed to staff)
     gratuity: 'Tips Payable',              // liability: auto-gratuity / service charges paid to staff
-    refunds: 'Refunds',                    // contra-income
-    fees: 'Merchant Processing Fees',      // expense: card processing fees
-    unallocatedWithholding: 'Toast Withholdings - Unallocated', // anything the rules below don't explain
-    reconciliationDifference: 'Toast Reconciliation Differences', // penny rounding from Toast
+    refunds: 'Refunds & Discounts',        // contra-income
+    fees: 'Bank Charges & Fees',           // expense: card processing fees
+    unallocatedWithholding: 'Bookkeeping Suspense - Unresolved Balances', // anything the rules below don't explain
+    reconciliationDifference: 'Bookkeeping Suspense - Unresolved Balances', // penny rounding from Toast
   },
 
   /**
@@ -118,7 +118,10 @@ var CONFIG = {
     // Example: daily equipment lease payment on the Tacoma location.
     // { name: 'Equipment lease (Easy Pay)', account: 'Toast Equipment Lease', method: 'fixed', amount: 25.00,
     //   locations: ['Stacks Burgers - Tacoma'], startDate: '20250101', endDate: '20270101' },
-    { name: 'Toast Capital loan repayment', account: 'Toast Capital Loan', method: 'remainder', locations: ['*'] },
+    // PROVISIONAL until confirmed against a Toast Payout Details report:
+    // about half of each day's card sales is swept to Toast checking, the rest is Toast Capital.
+    { name: 'Sweep to Toast checking', account: 'Toast Checking (3569)', method: 'percent', percent: 50, percentOf: 'payment', locations: ['*'] },
+    { name: 'Toast Capital loan repayment', account: 'Toast Capital loan', method: 'remainder', locations: ['*'] },
   ],
 
   /**
