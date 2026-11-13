@@ -143,10 +143,32 @@ function runDailySync() {
   }
 }
 
-/** Dry run for yesterday's settled payouts. Never writes to QuickBooks. */
+/**
+ * Dry run for the most recent settled date that has payouts (Toast can take a
+ * day or two to publish them). Never writes to QuickBooks.
+ */
 function previewYesterday() {
-  var d = addDaysYmd(todayYmd(), -1);
+  var d = latestSettledDate_(CONFIG, new ToastClient(CONFIG), 10);
+  if (!d) {
+    Logger.log('No Toast payouts found for your locations in the last 10 days.');
+    return;
+  }
+  Logger.log('Previewing the most recent settled date with payouts: ' + ymdToIso(d));
   runSync_(d, d, true, 'Preview');
+}
+
+/** Most recent settled date (YYYYMMDD) in the last `days` days with activity at a configured location. */
+function latestSettledDate_(config, toast, days) {
+  var end = addDaysYmd(todayYmd(), -1);
+  var wanted = config.toast.restaurantIds || [];
+  var best = '';
+  toast.getSettledPayouts(addDaysYmd(end, -(days - 1)), end).forEach(function (r) {
+    if (wanted.length && wanted.indexOf(r.restaurantGuid) < 0) return;
+    if (toCents(r.paymentAmount) === 0 && toCents(r.payoutAmount) === 0) return;
+    var d = toYmd(r.settledDate);
+    if (d > best) best = d;
+  });
+  return best;
 }
 
 /** Catch up a past range. Edit the dates, run, re-run until it says nothing is left. */
