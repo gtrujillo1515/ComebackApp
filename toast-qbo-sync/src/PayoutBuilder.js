@@ -123,6 +123,10 @@ function allocateWithholding(withholdingCents, ctx, rules) {
       } else if (r.method === 'percent') {
         var base = r.percentOf === 'withholding' ? withholdingCents : ctx.paymentCents;
         want = Math.round(base * Number(r.percent) / 100);
+      } else if (r.method === 'matchPayout') {
+        // Toast Checking auto savings: Toast splits what's left ~50/50 between
+        // Toast Checking and the outside bank, so it equals the payout amount.
+        want = Math.round((ctx.payoutCents || 0) * (r.percent === undefined ? 100 : Number(r.percent)) / 100);
       } else {
         throw new Error('Unknown withholding rule method "' + r.method + '" on rule "' + r.name + '"');
       }
@@ -215,7 +219,7 @@ function buildPayoutBreakdown(args) {
     holdReasons.push('Computed sales are negative (' + formatMoney(salesCents) + '); detail looks inconsistent.');
   }
 
-  var ctx = { restaurantGuid: guid, restaurantName: name, settledDate: settledDate, paymentCents: c.payment };
+  var ctx = { restaurantGuid: guid, restaurantName: name, settledDate: settledDate, paymentCents: c.payment, payoutCents: c.payout };
   var wh = allocateWithholding(c.withholding, ctx, config.withholdingRules);
   if (wh.unallocatedCents !== 0) {
     warnings.push(formatMoney(wh.unallocatedCents) + ' of withholdings not covered by withholdingRules; booked to "' +

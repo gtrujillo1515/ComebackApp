@@ -108,20 +108,25 @@ var CONFIG = {
    *   method 'fixed'     -> a set dollar amount per payout (equipment leases)
    *   method 'percent'   -> percent of `percentOf` ('payment' = card sales,
    *                         'withholding' = total withheld)
-   *   method 'remainder' -> whatever is left (use this for Toast Capital)
+   *   method 'matchPayout' -> the same amount as the payout (Toast Checking 50/50 auto savings)
+   *   method 'remainder' -> whatever is left
    * Any amount still left goes to accounts.unallocatedWithholding and you get
    * an alert.
    * `locations`: ['*'] for all, or a list of GUIDs / restaurant names.
    * `startDate` / `endDate` (YYYYMMDD, optional) limit when a rule applies.
    */
   withholdingRules: [
-    // Example: daily equipment lease payment on the Tacoma location.
-    // { name: 'Equipment lease (Easy Pay)', account: 'Toast Equipment Lease', method: 'fixed', amount: 25.00,
-    //   locations: ['Stacks Burgers - Tacoma'], startDate: '20250101', endDate: '20270101' },
-    // PROVISIONAL until confirmed against a Toast Payout Details report:
-    // about half of each day's card sales is swept to Toast checking, the rest is Toast Capital.
-    { name: 'Sweep to Toast checking', account: 'Toast Checking (3569)', method: 'percent', percent: 50, percentOf: 'payment', locations: ['*'] },
-    { name: 'Toast Capital loan repayment', account: 'Toast Capital loan', method: 'remainder', locations: ['*'] },
+    // From Toast Payout Details + the Capital dashboard (Nov 2026).
+    { name: 'Toast Capital loan repayment (19.8% of card sales)', account: 'Toast Capital loan',
+      method: 'percent', percent: 19.8, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
+    { name: 'Toast equipment lease (0.75% of card sales)', account: 'Rent & Lease',
+      method: 'percent', percent: 0.75, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
+    // Auto savings: Toast sends about the same amount to Toast Checking as to the bank.
+    { name: 'Auto savings to Toast Checking', account: 'Toast Checking (3569)', method: 'matchPayout', locations: ['*'] },
+    // Small items Toast doesn't itemize in the API (delivery/Uber Eats fees, Toast credit card,
+    // marketplace facilitator tax). Allocate monthly from Toast's payout statement.
+    { name: 'Other Toast withholdings (delivery fees, Toast credit card, MPF tax)',
+      account: 'Toast Capital Payments Pending Allocation', method: 'remainder', locations: ['*'] },
   ],
 
   /**

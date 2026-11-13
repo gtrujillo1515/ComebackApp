@@ -156,3 +156,30 @@ test('handles a refund-only day with negative payout', () => {
   assert.equal(b.bankCents, -2374);
   assert.deepEqual(plain(byRole(b)), { 'Card refunds': 2374 });
 });
+
+test('Stacks rules: capital 19.8%, lease 0.75%, Toast Checking matches the payout, rest to pending', () => {
+  const ctx = load();
+  const T = 'tacoma';
+  const cfg = config(ctx, {
+    withholdingRules: [
+      { name: 'Capital', account: 'Toast Capital loan', method: 'percent', percent: 19.8, percentOf: 'payment', locations: [T] },
+      { name: 'Lease', account: 'Rent & Lease', method: 'percent', percent: 0.75, percentOf: 'payment', locations: [T] },
+      { name: 'Savings', account: 'Toast Checking (3569)', method: 'matchPayout', locations: ['*'] },
+      { name: 'Other', account: 'Pending', method: 'remainder', locations: ['*'] },
+    ],
+  });
+  // Toast's own payout screen: card 15,261.37, fees 443.08, withheld 9,051.77, payout 5,766.52
+  const row = { restaurantGuid: T, restaurantName: 'Tacoma', settledDate: '20261102', paymentAmount: 15261.37, refundAmount: 0,
+    totalFeeAmount: 443.08, withholdingAmount: 9051.77, payoutAmount: 5766.52, payoutStatus: 'SENT' };
+  const payments = [{ restaurantGuid: T, checkGuid: 'c', paymentGuid: 'p', settledDate: 20261102, paymentSubtotal: 15261.37, paymentTotal: 15261.37, tipAmount: 0 }];
+  const b = ctx.buildPayoutBreakdown({ row, payments, checksByGuid: {}, config: cfg });
+  const w = Object.fromEntries(b.lines.filter((l) => l.role === 'withholding').map((l) => [l.label, l.cents]));
+  // Toast's screen: capital 3,021.42 / lease 114.37 / savings 5,786.85 / other 129.13
+  assert.deepEqual(plain(w), { Capital: 302175, Lease: 11446, Savings: 576652, Other: 14904 });
+  assert.equal(b.bankCents, 576652);
+  // Truck without a loan: only savings + remainder.
+  const t2 = ctx.buildPayoutBreakdown({ row: { ...row, restaurantGuid: 'truck2', restaurantName: 'Truck 2', withholdingAmount: 1016.90, paymentAmount: 2032.10,
+    totalFeeAmount: 64.98, payoutAmount: 950.22 }, payments: [{ ...payments[0], paymentSubtotal: 2032.10, paymentTotal: 2032.10 }], checksByGuid: {}, config: cfg });
+  const w2 = Object.fromEntries(t2.lines.filter((l) => l.role === 'withholding').map((l) => [l.label, l.cents]));
+  assert.deepEqual(plain(w2), { Savings: 95022, Other: 6668 });
+});
