@@ -70,6 +70,18 @@ test('journal mode produces balanced entries for normal payouts too', () => {
   assert.equal(sum('Credit'), 50000);
 });
 
+test('QuickBooks errors include the fault message and intuit_tid', () => {
+  const ctx = load({
+    fetch: () => ({
+      code: 400,
+      headers: { Intuit_Tid: '1-abc-123' },
+      text: JSON.stringify({ Fault: { Error: [{ Message: 'Invalid account', Detail: 'Account 99 not found' }] } }),
+    }),
+  });
+  const qbo = new ctx.QboClient(config(ctx), { getAccessToken: () => 't', refresh: () => {}, realmId: '1' });
+  assert.throws(() => qbo.create('Deposit', {}), /Invalid account - Account 99 not found \[intuit_tid 1-abc-123\]/);
+});
+
 test('txnDateOffsetDays shifts the QuickBooks date', () => {
   const ctx = load();
   const cfg = config(ctx, { sync: { txnDateOffsetDays: 1 } });

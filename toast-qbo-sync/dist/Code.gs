@@ -1052,11 +1052,22 @@ QboClient.prototype.request = function (method, path, body) {
     var json = null;
     try { json = res.text ? JSON.parse(res.text) : null; } catch (e) { /* non-JSON error */ }
     if (res.code >= 200 && res.code < 300 && !(json && json.Fault)) return json;
+    // intuit_tid identifies the request for Intuit support; include it in every error.
+    var tid = intuitTid(res.headers);
     throw new Error('QuickBooks ' + method.toUpperCase() + ' ' + path.split('?')[0] + ' failed (HTTP ' + res.code + '): ' +
-      describeQboFault(json, res.text));
+      describeQboFault(json, res.text) + (tid ? ' [intuit_tid ' + tid + ']' : ''));
   }
   throw new Error('QuickBooks kept throttling ' + path);
 };
+
+function intuitTid(headers) {
+  if (!headers) return '';
+  var keys = Object.keys(headers);
+  for (var i = 0; i < keys.length; i++) {
+    if (keys[i].toLowerCase() === 'intuit_tid') return String(headers[keys[i]]);
+  }
+  return '';
+}
 
 function describeQboFault(json, text) {
   var errs = json && json.Fault && json.Fault.Error;
