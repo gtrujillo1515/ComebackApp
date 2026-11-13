@@ -126,3 +126,15 @@ test('replaces the brand-only payout name with the full location name', () => {
   const rows = new ctx.ToastClient(config(ctx)).getSettledPayouts('20261110', '20261110');
   assert.deepEqual(plain(rows.map((r) => r.restaurantName)), ['Stacks Burgers - Truck 2', 'Stacks Burgers - Tacoma']);
 });
+
+test('matches payments whose settledDate uses a dashed or numeric format', () => {
+  const ctx = load();
+  const client = new ctx.ToastClient(config(ctx));
+  const mk = (id, settled) => ({ restaurantGuid: 'R', paymentGuid: id, checkGuid: 'c' + id, settledDate: settled,
+    paidDateTime: '2026-11-10 12:00:00', paymentTotal: 50, paymentSubtotal: 50, tipAmount: 0, gratuityAmount: 0 });
+  client.getPaymentsForSalesDate = () => [mk('a', '2026-11-11'), mk('b', 20261111), mk('c', '2026-11-12')];
+  client.getChecksForBusinessDate = () => ({});
+  const detail = client.getPayoutDetail({ restaurantGuid: 'r', settledDate: '20261111', paymentAmount: 100,
+    salesPeriodStartDateTime: '2026-11-10 08:00:00', salesPeriodEndDateTime: '2026-11-10 20:00:00' }, 100);
+  assert.deepEqual(plain(detail.payments.map((p) => p.paymentGuid)), ['a', 'b']);
+});

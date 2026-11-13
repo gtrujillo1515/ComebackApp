@@ -255,6 +255,34 @@ function showRecentPayouts() {
   for (var i = 0; i < lines.length; i += 40) Logger.log(lines.slice(i, i + 40).join('\n'));
 }
 
+/**
+ * Troubleshooting: shows what Toast's per-payment report returns around the
+ * most recent payout, so a HELD payout can be diagnosed. Writes nothing.
+ */
+function debugPayoutDetail() {
+  var toast = new ToastClient(CONFIG);
+  var d = latestSettledDate_(CONFIG, toast, 10);
+  if (!d) { Logger.log('No recent payouts.'); return; }
+  var wanted = CONFIG.toast.restaurantIds || [];
+  var rows = toast.getSettledPayouts(d, d).filter(function (r) {
+    return (!wanted.length || wanted.indexOf(r.restaurantGuid) >= 0) && toCents(r.paymentAmount) !== 0;
+  });
+  if (!rows.length) { Logger.log('No payouts on ' + d); return; }
+  var row = rows[0];
+  Logger.log('Payout row: ' + JSON.stringify(row));
+  var start = row.salesPeriodStartDateTime ? toYmd(row.salesPeriodStartDateTime) : addDaysYmd(d, -1);
+  dateRangeYmd(addDaysYmd(start, -1), d).forEach(function (day) {
+    var ps = toast.getPaymentsForSalesDate(day);
+    var mine = ps.filter(function (p) { return sameGuid(p.restaurantGuid, row.restaurantGuid); });
+    var settled = {};
+    mine.forEach(function (p) { settled[String(p.settledDate)] = (settled[String(p.settledDate)] || 0) + 1; });
+    Logger.log('Sales date ' + day + ': ' + ps.length + ' payments total, ' + mine.length + ' for ' + row.restaurantName +
+      '; settledDate values: ' + JSON.stringify(settled));
+    if (mine.length) Logger.log('  example: ' + JSON.stringify(mine[0]));
+    else if (ps.length) Logger.log('  example (other location): ' + JSON.stringify(ps[0]));
+  });
+}
+
 /** Every QuickBooks name the config refers to, for checkSetup. */
 function configuredQboNames(config) {
   var items = [];
@@ -927,6 +955,15 @@ ToastClient.prototype.runReport = function (postPath, getBase, body, slow) {
   throw new Error('Toast report ' + postPath + ' was still not ready after waiting; will retry next run.');
 };
 
+function sameGuid(a, b) {
+  return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+}
+
+/** toYmd that returns '' instead of throwing on odd values. */
+function safeYmd(v) {
+  try { return toYmd(v); } catch (e) { return ''; }
+}
+
 function parseReportGuid(text) {
   var t = String(text).trim();
   try {
@@ -1040,7 +1077,7 @@ ToastClient.prototype.getPayoutDetail = function (row, toleranceCents) {
     var out = [];
     dateRangeYmd(from, end).forEach(function (d) {
       self.getPaymentsForSalesDate(d).forEach(function (p) {
-        if (p.restaurantGuid === row.restaurantGuid && String(p.settledDate) === settled) out.push(p);
+        if (sameGuid(p.restaurantGuid, row.restaurantGuid) && safeYmd(p.settledDate) === settled) out.push(p);
       });
     });
     var seen = {};

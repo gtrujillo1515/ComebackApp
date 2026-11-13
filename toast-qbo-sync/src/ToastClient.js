@@ -114,6 +114,15 @@ ToastClient.prototype.runReport = function (postPath, getBase, body, slow) {
   throw new Error('Toast report ' + postPath + ' was still not ready after waiting; will retry next run.');
 };
 
+function sameGuid(a, b) {
+  return String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+}
+
+/** toYmd that returns '' instead of throwing on odd values. */
+function safeYmd(v) {
+  try { return toYmd(v); } catch (e) { return ''; }
+}
+
 function parseReportGuid(text) {
   var t = String(text).trim();
   try {
@@ -227,7 +236,7 @@ ToastClient.prototype.getPayoutDetail = function (row, toleranceCents) {
     var out = [];
     dateRangeYmd(from, end).forEach(function (d) {
       self.getPaymentsForSalesDate(d).forEach(function (p) {
-        if (p.restaurantGuid === row.restaurantGuid && String(p.settledDate) === settled) out.push(p);
+        if (sameGuid(p.restaurantGuid, row.restaurantGuid) && safeYmd(p.settledDate) === settled) out.push(p);
       });
     });
     var seen = {};
