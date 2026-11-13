@@ -125,11 +125,13 @@ var CONFIG = {
       method: 'percent', percent: 19.8, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
     { name: 'Toast equipment lease (0.75% of card sales)', account: 'Machinery & Equipment',
       method: 'percent', percent: 0.75, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
+    { name: 'Toast Credit Card repayment (0.5% of card sales)', account: 'Toast Credit Card',
+      method: 'percent', percent: 0.5, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
     // Auto savings: Toast sends about the same amount to Toast Checking as to the bank.
     { name: 'Auto savings to Toast Checking', account: 'Toast Checking (3569)', method: 'matchPayout', locations: ['*'] },
-    // Small items Toast doesn't itemize in the API (delivery/Uber Eats fees, Toast credit card,
+    // Small items Toast doesn't itemize in the API (delivery/Uber Eats fees,
     // marketplace facilitator tax). Allocate monthly from Toast's payout statement.
-    { name: 'Other Toast withholdings (delivery fees, Toast credit card, MPF tax)',
+    { name: 'Other Toast withholdings (delivery fees, MPF tax)',
       account: 'Toast Capital Payments Pending Allocation', method: 'remainder', locations: ['*'] },
   ],
 
