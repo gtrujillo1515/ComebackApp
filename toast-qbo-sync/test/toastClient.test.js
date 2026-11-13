@@ -138,3 +138,20 @@ test('matches payments whose settledDate uses a dashed or numeric format', () =>
     salesPeriodStartDateTime: '2026-11-10 08:00:00', salesPeriodEndDateTime: '2026-11-10 20:00:00' }, 100);
   assert.deepEqual(plain(detail.payments.map((p) => p.paymentGuid)), ['a', 'b']);
 });
+
+test('reads a payout\'s payments from the settled-date report (how Toast actually keys it)', () => {
+  const ctx = load();
+  const client = new ctx.ToastClient(config(ctx));
+  const asked = [];
+  const pay = (id, settled) => ({ restaurantGuid: 'R', paymentGuid: id, checkGuid: 'c' + id, settledDate: settled,
+    orderOpenDateTime: '2026-11-10 00:37:13', paidDateTime: '2026-11-10 00:38:50', paymentTotal: 50, paymentSubtotal: 50, tipAmount: 0, gratuityAmount: 0 });
+  client.getPaymentsForSalesDate = (d) => { asked.push(d); return d === '20261111' ? [pay('a', 20261111), pay('b', 20261111)] : [pay('x', Number(d))]; };
+  const checkDates = [];
+  client.getChecksForBusinessDate = (d) => { checkDates.push(d); return d === '20261109' ? { ca: { checkTotalAmount: 50, checkTaxAmount: 5, checkTipAmount: 0, checkGratuityAmount: 0 } } : {}; };
+  const detail = client.getPayoutDetail({ restaurantGuid: 'R', settledDate: '20261111', paymentAmount: 100,
+    salesPeriodStartDateTime: '2026-11-09 19:04:59', salesPeriodEndDateTime: '2026-11-10 03:08:04' }, 100);
+  assert.deepEqual(plain(detail.payments.map((p) => p.paymentGuid)), ['a', 'b']);
+  assert.deepEqual(plain(asked), ['20261111']);
+  assert.equal(checkDates[0], '20261109', 'UTC timestamps: look at the previous business date first');
+  assert.ok(detail.checksByGuid.ca);
+});

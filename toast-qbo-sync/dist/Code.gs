@@ -1089,7 +1089,18 @@ ToastClient.prototype.getPayoutDetail = function (row, toleranceCents) {
   }
   function sum(ps) { return ps.reduce(function (s, p) { return s + toCents(p.paymentTotal); }, 0); }
 
-  var payments = target === 0 ? [] : collect(start);
+  // Toast's /payout/payments report is keyed by the payout (settled) date, so
+  // the payout's own date normally returns exactly its payments.
+  var payments = [];
+  if (target !== 0) {
+    var bySettled = {};
+    self.getPaymentsForSalesDate(settled).forEach(function (p) {
+      if (sameGuid(p.restaurantGuid, row.restaurantGuid) && safeYmd(p.settledDate) === settled) bySettled[p.paymentGuid] = p;
+    });
+    payments = Object.keys(bySettled).map(function (k) { return bySettled[k]; });
+  }
+  // Fallback: search the sales dates around the payout window.
+  if (target !== 0 && Math.abs(target - sum(payments)) > toleranceCents) payments = collect(start);
   var extra = 0;
   while (target !== 0 && Math.abs(target - sum(payments)) > toleranceCents && extra < 3) {
     extra++;
@@ -1097,7 +1108,8 @@ ToastClient.prototype.getPayoutDetail = function (row, toleranceCents) {
     payments = collect(start);
   }
 
-  // Look up the check behind each payment for the exact tax split.
+  // Look up the check behind each payment for the exact tax split. Toast's
+  // timestamps are UTC, so the restaurant's business date is often the day before.
   var checks = {};
   var needed = {};
   payments.forEach(function (p) {
@@ -1105,8 +1117,8 @@ ToastClient.prototype.getPayoutDetail = function (row, toleranceCents) {
   });
   Object.keys(needed).forEach(function (checkGuid) {
     var d = needed[checkGuid];
-    var found = self.getChecksForBusinessDate(d)[checkGuid];
-    if (!found) found = self.getChecksForBusinessDate(addDaysYmd(d, -1))[checkGuid];
+    var found = self.getChecksForBusinessDate(addDaysYmd(d, -1))[checkGuid];
+    if (!found) found = self.getChecksForBusinessDate(d)[checkGuid];
     if (found) checks[checkGuid] = found;
   });
   return { payments: payments, checksByGuid: checks };
