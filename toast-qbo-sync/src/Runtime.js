@@ -22,7 +22,7 @@ var Runtime = {
 };
 
 function requireProp(name) {
-  var v = Runtime.props().getProperty(name);
+  var v = String(Runtime.props().getProperty(name) || '').trim();
   if (!v) throw new Error('Missing Script Property "' + name + '". Add it in Project Settings -> Script Properties.');
   return v;
 }

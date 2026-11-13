@@ -431,7 +431,7 @@ var Runtime = {
 };
 
 function requireProp(name) {
-  var v = Runtime.props().getProperty(name);
+  var v = String(Runtime.props().getProperty(name) || '').trim();
   if (!v) throw new Error('Missing Script Property "' + name + '". Add it in Project Settings -> Script Properties.');
   return v;
 }
@@ -983,11 +983,21 @@ function getQboService() {
     .setPropertyStore(PropertiesService.getScriptProperties())
     .setCache(CacheService.getScriptCache())
     .setLock(LockService.getScriptLock())
-    .setScope('com.intuit.quickbooks.accounting')
-    .setTokenHeaders({
-      Authorization: 'Basic ' + Utilities.base64Encode(id + ':' + secret),
-      Accept: 'application/json',
-    });
+    .setScope('com.intuit.quickbooks.accounting');
+}
+
+/** Run this if connecting fails: checks the stored keys for common copy-paste problems (never prints them). */
+function diagnoseQuickBooksKeys() {
+  var props = PropertiesService.getScriptProperties();
+  ['QBO_CLIENT_ID', 'QBO_CLIENT_SECRET'].forEach(function (name) {
+    var raw = props.getProperty(name);
+    if (!raw) { Logger.log(name + ': MISSING'); return; }
+    var trimmed = raw.trim();
+    Logger.log(name + ': ' + trimmed.length + ' characters' +
+      (raw !== trimmed ? ' (had extra spaces - they are ignored now)' : '') +
+      (/\s/.test(trimmed) ? ' WARNING: contains a space or line break in the middle' : ''));
+  });
+  Logger.log('Redirect URI (must be listed in your Intuit app under Production): ' + OAuth2.getRedirectUri());
 }
 
 /** OAuth redirect target. Intuit sends the company (realm) id along with the code. */
