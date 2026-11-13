@@ -81,7 +81,7 @@ var CONFIG = {
    * override in `locations` below.
    */
   accounts: {
-    deposit: 'Business Basic Checking (8410) - 4', // bank account Toast pays into (TO CONFIRM)
+    deposit: 'Checking - 7887',            // bank account Toast pays into (confirmed)
     sales: 'Sales',                        // income: food & beverage sales
     salesTax: 'Sales Tax Payable - Toast', // liability (TO CONFIRM: name of your sales tax liability account)
     tips: 'Tips Payable',                  // liability (TO CONFIRM: card tips owed to staff)
