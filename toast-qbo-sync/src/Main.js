@@ -5,7 +5,7 @@
  *   1. authorizeQuickBooks  - logs a link; open it to connect QuickBooks (one time)
  *   2. checkSetup           - lists Toast locations and checks every QBO account name
  *   3. previewYesterday     - dry run for the most recent settled date, shows the entries
- *   4. runDailySync         - the real job (respects CONFIG.sync.dryRun)
+ *   4. runDailySync         - the real job (dry run unless Script Property SYNC_MODE = live)
  *   5. installDailyTrigger  - schedule runDailySync every day at CONFIG.sync.triggerHour
  *   backfill                - edit the dates inside it, then run it to catch up history
  */
@@ -31,6 +31,8 @@ function disconnectQuickBooks() {
 /** Verify credentials, list Toast locations, and check every configured QBO name. */
 function checkSetup() {
   var problems = [];
+  Logger.log('Mode: ' + (isLive_() ? 'LIVE - writes to QuickBooks' : 'DRY RUN - nothing is written (set Script Property SYNC_MODE = live to turn on)'));
+  Logger.log('Start date: ' + (startDateFloor_() ? ymdToIso(startDateFloor_()) : 'not set (Script Property START_DATE)'));
   var toast = new ToastClient(CONFIG);
   try {
     var rests = toast.getRestaurants();
@@ -165,7 +167,7 @@ function runDailySync() {
   try {
     var end = addDaysYmd(todayYmd(), -1);
     var start = addDaysYmd(end, -(Math.max(CONFIG.sync.lookbackDays, 1) - 1));
-    runSync_(start, end, CONFIG.sync.dryRun, 'Daily sync');
+    runSync_(start, end, !isLive_(), 'Daily sync');
   } finally {
     lock.releaseLock();
   }
@@ -203,10 +205,30 @@ function latestSettledDate_(config, toast, days) {
 function backfill() {
   var START = '20261101'; // YYYYMMDD settled date
   var END = '20261111';
-  runSync_(START, END, CONFIG.sync.dryRun, 'Backfill');
+  runSync_(START, END, !isLive_(), 'Backfill');
+}
+
+/** Live only when Script Property SYNC_MODE is "live"; anything else is a dry run. */
+function isLive_() {
+  return String(Runtime.props().getProperty('SYNC_MODE') || '').trim().toLowerCase() === 'live';
+}
+
+/** Earliest settled date (YYYYMMDD) that may be posted, from Script Property START_DATE. */
+function startDateFloor_() {
+  var v = String(Runtime.props().getProperty('START_DATE') || '').trim();
+  return v ? toYmd(v) : '';
 }
 
 function runSync_(startYmd, endYmd, dryRun, title) {
+  var floor = startDateFloor_();
+  if (!dryRun && !floor) {
+    throw new Error('Set Script Property START_DATE (e.g. 20261114) before turning on SYNC_MODE = live.');
+  }
+  if (!dryRun && floor && startYmd < floor) startYmd = floor;
+  if (startYmd > endYmd) {
+    Logger.log(title + ': nothing to do - every date in range is before START_DATE ' + ymdToIso(floor) + '.');
+    return null;
+  }
   var toast = new ToastClient(CONFIG);
   var qbo = null;
   var result;

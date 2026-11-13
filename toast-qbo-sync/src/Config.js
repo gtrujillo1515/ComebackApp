@@ -33,16 +33,19 @@ var CONFIG = {
   },
 
   sync: {
-    // Start in dry-run. Nothing is written to QuickBooks until this is false.
-    dryRun: true,
+    // ON/OFF SWITCH and START DATE live in Script Properties (Project Settings),
+    // so pasting a new version of this file never changes them:
+    //   SYNC_MODE  = live       -> writes to QuickBooks. Anything else = dry run.
+    //   START_DATE = 20261114   -> never posts payouts settled before this date.
 
     // Each run re-checks this many past settled dates and posts anything that
     // is missing. Already-posted payouts are detected and skipped, so missed
     // runs heal themselves.
-    lookbackDays: 7,
+    lookbackDays: 14,
 
-    // Toast payout statuses that are safe to post. NONE = failed payout.
-    postStatuses: ['SENT', 'CAPTURED'],
+    // Toast payout statuses that are safe to post. SENT = Toast sent it to the
+    // bank. CAPTURED payouts wait until they're SENT; NONE = failed.
+    postStatuses: ['SENT'],
 
     // 'deposit' (recommended: matches the bank feed line directly) or
     // 'journal'. Payouts that net to zero or below always use a journal entry.

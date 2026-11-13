@@ -55,11 +55,14 @@ dry-run output against them.
 
 ## Safety rails
 
-- **Dry run first.** `CONFIG.sync.dryRun` is `true` until you flip it.
+- **Dry run until you switch it on.** Nothing is written to QuickBooks until
+  Script Property `SYNC_MODE` is `live`. Live posting also requires
+  `START_DATE` (YYYYMMDD), and nothing settled before that date is ever posted.
+- **Only SENT payouts.** CAPTURED payouts wait until Toast sends them.
 - **Holds instead of guesses.** If the per-payment detail doesn't add up to
   Toast's payout total (within `reconcileToleranceCents`), that payout is
   **held**, not posted. You're emailed, and it's retried on the next run.
-- **Self-healing.** Each run re-checks the last `lookbackDays` (default 7)
+- **Self-healing.** Each run re-checks the last `lookbackDays` (default 14)
   settled dates and posts anything missing. Missed or failed runs catch up on
   their own.
 - **Re-posting.** Delete the transaction in QuickBooks and the next run books
@@ -125,10 +128,11 @@ Copy the **Client ID** and **Client secret**.
    confirms every account name exists in QuickBooks. Fix anything it lists.
 
 ### 6. Dry run, compare, go live
-1. Run **`previewYesterday`** (or `backfill` with `dryRun: true`). The log and
-   email show each Deposit that *would* be created. Compare a few against
+1. Run **`previewYesterday`**. The log and email show each Deposit that
+   *would* be created for the most recent payout day. Compare it against
    Toast's Payout Details report and your bank statement.
-2. Set `dryRun: false` in `Config.js`.
+2. Add Script Properties `START_DATE` (first settled date to post, YYYYMMDD)
+   and `SYNC_MODE` = `live`.
 3. Optional catch-up: edit the dates in `backfill()` and run it. It stops after
    ~4.5 minutes to stay under Google's 6-minute limit; run it again until it
    reports nothing left.
