@@ -49,7 +49,7 @@ var CONFIG = {
 
     // 'deposit' (recommended: matches the bank feed line directly) or
     // 'journal'. Payouts that net to zero or below always use a journal entry.
-    postingMode: 'deposit',
+    postingMode: 'journal',
 
     // QuickBooks transaction date = Toast settled date + this many days.
     // Use 1 if your bank shows Toast deposits the day after Toast settles.
@@ -80,7 +80,11 @@ var CONFIG = {
    * override in `locations` below.
    */
   accounts: {
-    deposit: 'Checking - 7887',            // bank account Toast pays into (confirmed)
+    // Your bank rules (#287/#288 for Checking - 7887, #305 for Toast Checking and its
+    // jars) already add every Toast deposit to Sales:Toast Clearing. Each payout's
+    // journal entry moves that money back out of Toast Clearing into the right
+    // accounts, so Toast Clearing nets to ~$0 and nothing needs matching by hand.
+    deposit: 'Sales:Toast Clearing',
     sales: 'Sales',                        // income: food & beverage sales
     salesTax: 'Sales Tax Payable - Toast', // liability (TO CONFIRM: name of your sales tax liability account)
     tips: 'Tips Payable',                  // liability (TO CONFIRM: card tips owed to staff)
@@ -111,7 +115,7 @@ var CONFIG = {
    *   method 'fixed'     -> a set dollar amount per payout (equipment leases)
    *   method 'percent'   -> percent of `percentOf` ('payment' = card sales,
    *                         'withholding' = total withheld)
-   *   method 'matchPayout' -> the same amount as the payout (Toast Checking 50/50 auto savings)
+   *   `round: 'up'` rounds a percent rule up to the next cent, as Toast does
    *   method 'remainder' -> whatever is left
    * Any amount still left goes to accounts.unallocatedWithholding and you get
    * an alert.
@@ -119,18 +123,27 @@ var CONFIG = {
    * `startDate` / `endDate` (YYYYMMDD, optional) limit when a rule applies.
    */
   withholdingRules: [
-    // From Toast Payout Details + the Capital dashboard (Nov 2026).
-    { name: 'Toast Capital loan repayment (19.8% of card sales)', account: 'Toast Capital loan',
-      method: 'percent', percent: 19.8, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
-    { name: 'Toast equipment lease (0.75% of card sales)', account: 'Machinery & Equipment',
+    // From Toast Payout Details + the Capital dashboard (Nov 2026). Percent = % of card sales.
+    { name: 'Toast Capital loan repayment (19.8%)', account: 'Toast Capital loan',
+      method: 'percent', percent: 19.8, percentOf: 'payment', round: 'up', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
+    { name: 'Toast equipment lease (0.75%)', account: 'Machinery & Equipment',
       method: 'percent', percent: 0.75, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
-    { name: 'Toast Credit Card repayment (0.5% of card sales)', account: 'Toast Credit Card',
-      method: 'percent', percent: 0.5, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
-    // Auto savings: Toast sends about the same amount to Toast Checking as to the bank.
-    { name: 'Auto savings to Toast Checking', account: 'Toast Checking (3569)', method: 'matchPayout', locations: ['*'] },
-    // Small items Toast doesn't itemize in the API (delivery/Uber Eats fees,
-    // marketplace facilitator tax). Allocate monthly from Toast's payout statement.
-    { name: 'Other Toast withholdings (delivery fees, MPF tax)',
+    { name: 'Toast Credit Card repayment (0.5%)', account: 'Toast Credit Card',
+      method: 'percent', percent: 0.5, percentOf: 'payment', round: 'up', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
+    // Auto savings (38% of card sales, every location). Toast sends each slice to Toast
+    // Checking or a jar as a "TOAST SAV" deposit, which bank rule #305 adds to
+    // Sales:Toast Clearing, so these lines clear those deposits back out of it.
+    { name: 'Auto savings - Toast Checking (17%)', account: 'Sales:Toast Clearing',
+      method: 'percent', percent: 17, percentOf: 'payment', round: 'up', locations: ['*'] },
+    { name: 'Auto savings - Sales tax jar (17%)', account: 'Sales:Toast Clearing',
+      method: 'percent', percent: 17, percentOf: 'payment', round: 'up', locations: ['*'] },
+    { name: 'Auto savings - Rent jar (2%)', account: 'Sales:Toast Clearing',
+      method: 'percent', percent: 2, percentOf: 'payment', round: 'up', locations: ['*'] },
+    { name: 'Auto savings - Wrap Fund jar (2%)', account: 'Sales:Toast Clearing',
+      method: 'percent', percent: 2, percentOf: 'payment', round: 'up', locations: ['*'] },
+    // Whatever Toast withheld beyond the rules above (Truck 2 ~12%, Truck 4 ~13% of card
+    // sales: to identify; plus delivery fees, marketplace tax). Allocate from Toast's statement.
+    { name: 'Other Toast withholdings (to allocate)',
       account: 'Toast Capital Payments Pending Allocation', method: 'remainder', locations: ['*'] },
   ],
 

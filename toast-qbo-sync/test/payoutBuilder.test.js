@@ -183,3 +183,26 @@ test('Stacks rules: capital 19.8%, lease 0.75%, Toast Checking matches the payou
   const w2 = Object.fromEntries(t2.lines.filter((l) => l.role === 'withholding').map((l) => [l.label, l.cents]));
   assert.deepEqual(plain(w2), { Savings: 95022, Other: 6668 });
 });
+
+test('Tacoma Nov 11 payout matches Toast Payout Details to the cent with the real rules', () => {
+  const ctx = load();
+  const T = 'tac';
+  const pct = (name, percent, round) => ({ name, account: 'X:' + name, method: 'percent', percent, percentOf: 'payment', round, locations: [T] });
+  const cfg = config(ctx, {
+    withholdingRules: [
+      pct('Capital', 19.8, 'up'), pct('Lease', 0.75), pct('Credit card', 0.5, 'up'),
+      pct('Sav main', 17, 'up'), pct('Sav tax', 17, 'up'), pct('Sav rent', 2, 'up'), pct('Sav wrap', 2, 'up'),
+      { name: 'Other', account: 'Pending', method: 'remainder', locations: ['*'] },
+    ],
+  });
+  const row = { restaurantGuid: T, restaurantName: 'Tacoma', settledDate: '20261111', paymentAmount: 972.63, refundAmount: 0,
+    totalFeeAmount: 29.42, withholdingAmount: 574.37, payoutAmount: 368.84, payoutStatus: 'SENT' };
+  const payments = [{ restaurantGuid: T, checkGuid: 'c', paymentGuid: 'p', settledDate: 20261111, paymentSubtotal: 869.58, paymentTotal: 972.63, tipAmount: 103.05 }];
+  const b = ctx.buildPayoutBreakdown({ row, payments, checksByGuid: {}, config: cfg });
+  const w = Object.fromEntries(b.lines.filter((l) => l.role === 'withholding').map((l) => [l.label, l.cents]));
+  // Toast: capital 192.59, lease 7.28, credit card 4.88, savings 165.35 + 165.35 + 19.46 + 19.46 (bank feed)
+  // Within a cent of Toast on lease/credit card; the leftover nets to exactly $0 so no "Other" line.
+  assert.deepEqual(plain(w), { Capital: 19259, Lease: 729, 'Credit card': 487,
+    'Sav main': 16535, 'Sav tax': 16535, 'Sav rent': 1946, 'Sav wrap': 1946 });
+  assert.equal(b.bankCents, 36884);
+});

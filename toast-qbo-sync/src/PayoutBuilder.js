@@ -122,7 +122,9 @@ function allocateWithholding(withholdingCents, ctx, rules) {
         want = toCents(r.amount);
       } else if (r.method === 'percent') {
         var base = r.percentOf === 'withholding' ? withholdingCents : ctx.paymentCents;
-        want = Math.round(base * Number(r.percent) / 100);
+        var exact = base * Number(r.percent) / 100;
+        // Toast rounds its percentage withholdings up to the next cent.
+        want = r.round === 'up' ? Math.ceil(exact - 1e-9) : Math.round(exact);
       } else if (r.method === 'matchPayout') {
         // Toast Checking auto savings: Toast splits what's left ~50/50 between
         // Toast Checking and the outside bank, so it equals the payout amount.
