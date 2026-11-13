@@ -119,7 +119,7 @@ var CONFIG = {
     // From Toast Payout Details + the Capital dashboard (Nov 2026).
     { name: 'Toast Capital loan repayment (19.8% of card sales)', account: 'Toast Capital loan',
       method: 'percent', percent: 19.8, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
-    { name: 'Toast equipment lease (0.75% of card sales)', account: 'Rent & Lease',
+    { name: 'Toast equipment lease (0.75% of card sales)', account: 'Machinery & Equipment',
       method: 'percent', percent: 0.75, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
     // Auto savings: Toast sends about the same amount to Toast Checking as to the bank.
     { name: 'Auto savings to Toast Checking', account: 'Toast Checking (3569)', method: 'matchPayout', locations: ['*'] },
