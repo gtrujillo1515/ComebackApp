@@ -33,6 +33,7 @@ function load(overrides = {}) {
 /** Deep copy of CONFIG from the context with overrides merged per section. */
 function config(ctx, patch = {}) {
   const base = JSON.parse(JSON.stringify(ctx.CONFIG));
+  base.toast.restaurantIds = []; // tests use fake GUIDs; real ones live in Config.js
   for (const k of Object.keys(patch)) {
     if (patch[k] && typeof patch[k] === 'object' && !Array.isArray(patch[k]) && base[k] && typeof base[k] === 'object') {
       base[k] = { ...base[k], ...patch[k] };

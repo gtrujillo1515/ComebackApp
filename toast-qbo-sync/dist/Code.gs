@@ -21,7 +21,14 @@ var CONFIG = {
     apiHost: 'https://ws-api.toasttab.com',
     // Restaurant GUIDs to include. Empty = every location the credential sees.
     // Run `checkSetup` to print the GUID and name of each location.
-    restaurantIds: [],
+    restaurantIds: [
+      'e46bdc5d-4dbd-4103-9bdf-c270aaad4610', // Stacks Burgers - Truck 2
+      '257c9926-e0f6-478f-aa82-5db0a7f8931b', // Stacks Burgers - Tacoma
+      '81257d52-4aaa-4c02-a028-3e4c2159524b', // Stacks Burgers Food Trailer
+      'dc37ea3a-c84d-44ec-a787-895fa09f45f5', // Stacks Burgers Truck 3
+      '39c00539-3850-487e-a353-f2285b5104ac', // Stacks Truck 4 - Truck 4
+      // Not included: Independent Kitchen LLC (test mode)
+    ],
   },
 
   qbo: {
@@ -200,6 +207,37 @@ function checkSetup() {
   } else {
     Logger.log('\nEverything checks out.');
   }
+}
+
+/** Print the QuickBooks chart of accounts (type, name, balance) so names can be copied into CONFIG. */
+function listQuickBooksAccounts() {
+  var qbo = new QboClient(CONFIG);
+  var rows = qbo.queryAll('SELECT * FROM Account WHERE Active = true', 'Account');
+  rows.sort(function (a, b) {
+    return (a.AccountType + a.FullyQualifiedName).localeCompare(b.AccountType + b.FullyQualifiedName);
+  });
+  var lines = rows.map(function (a) {
+    return a.AccountType + ' | ' + a.FullyQualifiedName + ' | ' + formatMoney(toCents(a.CurrentBalance || 0));
+  });
+  Logger.log(rows.length + ' active QuickBooks accounts (type | name | balance):\n' + lines.join('\n'));
+}
+
+/** Print the last 14 days of Toast payouts per location: card sales, refunds, fees, withholdings, payout. */
+function showRecentPayouts() {
+  var toast = new ToastClient(CONFIG);
+  var end = addDaysYmd(todayYmd(), -1);
+  var rows = toast.getSettledPayouts(addDaysYmd(end, -13), end);
+  rows.sort(function (a, b) {
+    var n = String(a.restaurantName).localeCompare(String(b.restaurantName));
+    return n !== 0 ? n : String(a.settledDate).localeCompare(String(b.settledDate));
+  });
+  var lines = rows.map(function (r) {
+    return [String(r.restaurantName).trim(), ymdToIso(r.settledDate), 'card ' + formatMoney(toCents(r.paymentAmount)),
+      'refunds ' + formatMoney(toCents(r.refundAmount)), 'fees ' + formatMoney(toCents(r.totalFeeAmount)),
+      'withheld ' + formatMoney(toCents(r.withholdingAmount)), 'payout ' + formatMoney(toCents(r.payoutAmount)),
+      r.payoutStatus].join(' | ');
+  });
+  Logger.log(rows.length + ' Toast payouts, last 14 settled days:\n' + lines.join('\n'));
 }
 
 /** Every QuickBooks name the config refers to, for checkSetup. */

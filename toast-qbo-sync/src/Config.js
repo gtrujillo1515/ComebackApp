@@ -17,7 +17,14 @@ var CONFIG = {
     apiHost: 'https://ws-api.toasttab.com',
     // Restaurant GUIDs to include. Empty = every location the credential sees.
     // Run `checkSetup` to print the GUID and name of each location.
-    restaurantIds: [],
+    restaurantIds: [
+      'e46bdc5d-4dbd-4103-9bdf-c270aaad4610', // Stacks Burgers - Truck 2
+      '257c9926-e0f6-478f-aa82-5db0a7f8931b', // Stacks Burgers - Tacoma
+      '81257d52-4aaa-4c02-a028-3e4c2159524b', // Stacks Burgers Food Trailer
+      'dc37ea3a-c84d-44ec-a787-895fa09f45f5', // Stacks Burgers Truck 3
+      '39c00539-3850-487e-a353-f2285b5104ac', // Stacks Truck 4 - Truck 4
+      // Not included: Independent Kitchen LLC (test mode)
+    ],
   },
 
   qbo: {

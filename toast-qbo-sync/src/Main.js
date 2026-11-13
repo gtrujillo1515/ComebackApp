@@ -68,6 +68,37 @@ function checkSetup() {
   }
 }
 
+/** Print the QuickBooks chart of accounts (type, name, balance) so names can be copied into CONFIG. */
+function listQuickBooksAccounts() {
+  var qbo = new QboClient(CONFIG);
+  var rows = qbo.queryAll('SELECT * FROM Account WHERE Active = true', 'Account');
+  rows.sort(function (a, b) {
+    return (a.AccountType + a.FullyQualifiedName).localeCompare(b.AccountType + b.FullyQualifiedName);
+  });
+  var lines = rows.map(function (a) {
+    return a.AccountType + ' | ' + a.FullyQualifiedName + ' | ' + formatMoney(toCents(a.CurrentBalance || 0));
+  });
+  Logger.log(rows.length + ' active QuickBooks accounts (type | name | balance):\n' + lines.join('\n'));
+}
+
+/** Print the last 14 days of Toast payouts per location: card sales, refunds, fees, withholdings, payout. */
+function showRecentPayouts() {
+  var toast = new ToastClient(CONFIG);
+  var end = addDaysYmd(todayYmd(), -1);
+  var rows = toast.getSettledPayouts(addDaysYmd(end, -13), end);
+  rows.sort(function (a, b) {
+    var n = String(a.restaurantName).localeCompare(String(b.restaurantName));
+    return n !== 0 ? n : String(a.settledDate).localeCompare(String(b.settledDate));
+  });
+  var lines = rows.map(function (r) {
+    return [String(r.restaurantName).trim(), ymdToIso(r.settledDate), 'card ' + formatMoney(toCents(r.paymentAmount)),
+      'refunds ' + formatMoney(toCents(r.refundAmount)), 'fees ' + formatMoney(toCents(r.totalFeeAmount)),
+      'withheld ' + formatMoney(toCents(r.withholdingAmount)), 'payout ' + formatMoney(toCents(r.payoutAmount)),
+      r.payoutStatus].join(' | ');
+  });
+  Logger.log(rows.length + ' Toast payouts, last 14 settled days:\n' + lines.join('\n'));
+}
+
 /** Every QuickBooks name the config refers to, for checkSetup. */
 function configuredQboNames(config) {
   var items = [];
