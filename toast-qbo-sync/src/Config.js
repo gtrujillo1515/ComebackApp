@@ -96,6 +96,18 @@ var CONFIG = {
   },
 
   /**
+   * Cash sales from Toast's Standard API (Script Properties TOAST_STD_CLIENT_ID,
+   * TOAST_STD_CLIENT_SECRET, and CASH_START_DATE = first business date to post).
+   * Each day: DEBIT onHandAccount, CREDIT sales / sales tax / tips. A bank rule
+   * moves each cash deposit out of onHandAccount, so its balance is cash not yet
+   * deposited.
+   */
+  cash: {
+    enabled: true,
+    onHandAccount: 'Cash on Hand - Toast',
+  },
+
+  /**
    * Optional per-location settings, keyed by restaurant GUID or by the exact
    * Toast restaurant name. All fields are optional.
    *

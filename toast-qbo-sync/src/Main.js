@@ -10,6 +10,7 @@
  *   startCatchUp            - post every payout from START_DATE up to the last 14 days, one
  *                             week per hour, automatically (about 60 payout days per day)
  *   catchUpStatus / stopCatchUp
+ *   previewCash             - dry run of yesterday's cash sales per location (Standard API)
  *   backfill                - edit the dates inside it, then run it to catch up a range once
  */
 
@@ -46,6 +47,23 @@ function checkSetup() {
     });
   } catch (e) {
     problems.push('Toast: ' + e.message);
+  }
+
+  if (cashConfigured_()) {
+    try {
+      var std = new StandardToastClient(CONFIG);
+      var g = (CONFIG.toast.restaurantIds || [])[0];
+      var day = addDaysYmd(todayYmd(), -1);
+      var orders = std.getOrders(g, day);
+      var cash = computeCashFromOrders(orders);
+      Logger.log('Toast Standard API works: ' + orders.length + ' orders and ' + cash.count + ' cash payments (' +
+        formatMoney(cash.grossCents) + ') at the first location on ' + ymdToIso(day) + '.');
+    } catch (e) {
+      problems.push('Toast Standard API (cash): ' + e.message);
+    }
+    Logger.log('Cash start date: ' + (cashStartFloor_() ? ymdToIso(cashStartFloor_()) : 'not set (Script Property CASH_START_DATE)'));
+  } else {
+    Logger.log('Cash sales: off (add Script Properties TOAST_STD_CLIENT_ID and TOAST_STD_CLIENT_SECRET to turn on).');
   }
 
   var qbo = null;
@@ -157,6 +175,7 @@ function configuredQboNames(config) {
   });
   (config.withholdingRules || []).forEach(function (r) { add('account', r.account, 'withholdingRules: ' + r.name); });
   (config.payoutSplits || []).forEach(function (s) { add('account', s.account, 'payoutSplits: ' + s.name); });
+  if (config.cash && config.cash.enabled) add('account', config.cash.onHandAccount, 'cash.onHandAccount');
   return items;
 }
 
@@ -171,6 +190,7 @@ function runDailySync() {
     var end = addDaysYmd(todayYmd(), -1);
     var start = addDaysYmd(end, -(Math.max(CONFIG.sync.lookbackDays, 1) - 1));
     runSync_(start, end, !isLive_(), 'Daily sync');
+    if (cashConfigured_()) runCash_(start, end, !isLive_(), 'Daily cash');
   } finally {
     lock.releaseLock();
   }
@@ -387,4 +407,64 @@ function finishCatchUp_() {
   notify_('Catch-up finished', 'Catch-up from ' + ymdToIso(startDateFloor_()) + ' is complete.\nTotals: ' + counts +
     (held.length ? '\n\nHELD payouts (not posted) - review these:\n' + held.join('\n') +
       (held.length >= CATCHUP_MAX_HELD ? '\n(list truncated)' : '') : '\n\nNothing was held.'), held.length > 0);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Cash sales (Toast Standard API)                                           */
+/* ------------------------------------------------------------------------ */
+
+function cashConfigured_() {
+  return !!(CONFIG.cash && CONFIG.cash.enabled && Runtime.props().getProperty('TOAST_STD_CLIENT_ID'));
+}
+
+/** First business date whose cash may be posted, from Script Property CASH_START_DATE. */
+function cashStartFloor_() {
+  var v = String(Runtime.props().getProperty('CASH_START_DATE') || '').trim();
+  return v ? toYmd(v) : '';
+}
+
+/** Dry run: yesterday's cash sales per location. Never writes to QuickBooks. */
+function previewCash() {
+  var d = addDaysYmd(todayYmd(), -1);
+  runCash_(d, d, true, 'Cash preview');
+}
+
+function runCash_(startYmd, endYmd, dryRun, title) {
+  var floor = cashStartFloor_();
+  if (!dryRun && !floor) {
+    Logger.log(title + ': skipped - set Script Property CASH_START_DATE to turn on cash posting.');
+    return null;
+  }
+  if (!dryRun && startYmd < floor) startYmd = floor;
+  if (startYmd > endYmd) return null;
+  var qbo = null;
+  try {
+    qbo = new QboClient(CONFIG);
+  } catch (e) {
+    if (!dryRun) throw e;
+  }
+  var result;
+  try {
+    result = syncCash({
+      config: CONFIG, toast: new StandardToastClient(CONFIG), qbo: qbo, startYmd: startYmd, endYmd: endYmd,
+      dryRun: dryRun, locationNames: new ToastClient(CONFIG).getLocationNames(),
+    });
+  } catch (e) {
+    notify_(title + ' FAILED', 'Cash sales could not be posted:\n\n' + (e.stack || e.message), true);
+    throw e;
+  }
+  var text = formatSyncResult(result).replace('payout sync', 'cash sales');
+  if (qbo) {
+    try {
+      var bal = qbo.accountBalance(CONFIG.cash.onHandAccount);
+      text += '\n\n' + CONFIG.cash.onHandAccount + ' balance: ' + formatMoney(toCents(bal)) +
+        ' (cash Toast recorded that has not been deposited yet; a negative number means more was deposited than Toast recorded).';
+    } catch (e) { /* account may not exist yet */ }
+  }
+  Logger.log(text);
+  var attention = syncNeedsAttention(result);
+  if (attention || (CONFIG.sync.sendDailySummary && (result.posted.length || result.previews.length))) {
+    notify_(title + (attention ? ': needs attention' : ''), text, attention);
+  }
+  return result;
 }

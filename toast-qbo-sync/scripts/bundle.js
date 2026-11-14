@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const root = path.join(__dirname, '..');
-const order = ['Config.js', 'Main.js', 'Util.js', 'Runtime.js', 'PayoutBuilder.js', 'ToastClient.js', 'QboClient.js', 'QboPoster.js', 'Sync.js'];
+const order = ['Config.js', 'Main.js', 'Util.js', 'Runtime.js', 'PayoutBuilder.js', 'ToastClient.js', 'QboClient.js', 'QboPoster.js', 'Sync.js', 'CashSync.js'];
 const all = fs.readdirSync(path.join(root, 'src')).filter((f) => f.endsWith('.js'));
 const missing = all.filter((f) => !order.includes(f));
 if (missing.length) throw new Error('Add to bundle order: ' + missing.join(', '));

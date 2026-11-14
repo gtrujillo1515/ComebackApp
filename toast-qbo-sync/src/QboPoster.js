@@ -59,7 +59,7 @@ function buildQboTransaction(b, refs, config) {
     if (deptRef) detail.DepartmentRef = deptRef;
     jeLines.push({ Amount: fromCents(cents), DetailType: 'JournalEntryLineDetail', Description: description, JournalEntryLineDetail: detail });
   }
-  jeLine(bankRef, b.bankCents, 'Debit', 'Toast payout deposit - ' + b.restaurantName + ' ' + ymdToIso(b.settledDate));
+  jeLine(bankRef, b.bankCents, 'Debit', (b.bankLabel || 'Toast payout deposit') + ' - ' + b.restaurantName + ' ' + ymdToIso(b.settledDate));
   b.lines.forEach(function (l) {
     jeLine(refs.account(l.account), l.cents, l.side === 'credit' ? 'Credit' : 'Debit', desc(l));
   });

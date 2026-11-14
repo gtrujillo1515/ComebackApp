@@ -5,7 +5,7 @@ const path = require('path');
 const vm = require('vm');
 
 const SRC = path.join(__dirname, '..', 'src');
-const FILES = ['Util.js', 'Runtime.js', 'Config.js', 'PayoutBuilder.js', 'ToastClient.js', 'QboClient.js', 'QboPoster.js', 'Sync.js'];
+const FILES = ['Util.js', 'Runtime.js', 'Config.js', 'PayoutBuilder.js', 'ToastClient.js', 'QboClient.js', 'QboPoster.js', 'Sync.js', 'CashSync.js'];
 
 function load(overrides = {}) {
   const ctx = vm.createContext({ console });

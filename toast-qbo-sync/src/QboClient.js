@@ -199,6 +199,13 @@ QboClient.prototype.findExisting = function (key, txnDateIso) {
   return null;
 };
 
+/** Current balance of an account by name (dollars, as QuickBooks reports it). */
+QboClient.prototype.accountBalance = function (name) {
+  var ref = this.resolveAccount(name);
+  var rows = this.queryAll("SELECT * FROM Account WHERE Id = '" + ref.value + "'", 'Account');
+  return rows.length ? Number(rows[0].CurrentBalance || 0) : null;
+};
+
 QboClient.prototype.create = function (entity, payload) {
   var res = this.request('post', '/' + entity.toLowerCase(), payload);
   return res[entity];
