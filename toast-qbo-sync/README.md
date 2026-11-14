@@ -1,25 +1,54 @@
 # Toast → QuickBooks payout sync
 
-Every day this pulls each location's Toast payout from the **Toast Analytics API**
-and books it in **QuickBooks Online** as one Deposit. The Deposit total is the
-exact amount that hits your bank, so the bank-feed line matches it. Each
-Deposit is broken into:
+Books every Toast card payout and every day's cash sales into QuickBooks
+Online automatically, with sales, sales tax (the tax actually charged on each
+check, at whatever location a truck was), tips, fees, Toast Capital loans,
+the equipment lease, Toast Credit Card repayments and Toast Checking auto
+savings each in their own account.
 
-| Deposit line | Sign | QuickBooks account (set in `src/Config.js`) |
-|---|---|---|
-| Card sales (excl. tax & tips) | + | Sales income |
-| Sales tax on card sales | + | Sales tax payable (liability) |
-| Card tips / auto-gratuity | + | Tips payable (liability) |
-| Card refunds | − | Refunds |
-| Card processing fees | − | Merchant fees (expense) |
-| Toast Capital repayment | − | Toast Capital Loan (liability) |
-| Equipment lease (Easy Pay) | − | Lease liability / expense |
-| Sweep to Toast checking | − | Toast Checking (bank) |
-| **= Deposit total** | | **Your outside bank account** |
+## How it fits together (Stacks / TRU TASTE, INC)
 
-It runs as a free Google Apps Script with a daily trigger, emails you when
-something needs attention, and never double-posts. Each transaction carries a
-key in its memo, and the script checks QuickBooks for that key before posting.
+**Card payouts.** Bank rules add every Toast deposit to `Sales:Toast Clearing`:
+"TOAST DEP" in Checking - 7887 (rule "Toast card payout - to Toast Clearing"),
+and the 17/17/2/2 % "TOAST SAV" auto-savings deposits in Toast Checking and its
+Sales tax / Rent / Wrap Fund jars (rule "Toast auto savings - to Toast
+Clearing"). For each payout the program posts one journal entry that moves
+that money out of Toast Clearing:
+
+| Debit | Credit |
+|---|---|
+| Sales:Toast Clearing (bank deposit + auto savings) | Sales |
+| Bank Charges & Fees (card fees) | Sales Tax Collected - Toast |
+| Toast Capital loan (Tacoma 19.8 %, Truck 2 12.05 %, Truck 4 12.99 %) | Tips Payable |
+| Machinery & Equipment (lease 0.75 %), Toast Credit Card (0.5 %) | |
+| Toast Capital Payments Pending Allocation (delivery fees, MPF tax) | |
+
+Toast Clearing nets to ~$0 per payout (pennies from Toast's per-payment
+rounding). Withholding rates live in `CONFIG.withholdingRules`; loan rules are
+`optional` so days before a loan started are handled, and a payout whose
+withholdings don't fit the rules is **held** and emailed, never guessed.
+
+**Cash.** From Toast's Standard API (orders), each location's cash payments per
+business day are posted as: debit `Cash on Hand - Toast`, credit Sales / Sales
+Tax Collected - Toast / Tips Payable. Cash is deposited only to Wells Fargo
+(4014), whose rule "Cash deposit - from Cash on Hand (Toast)" moves each
+"eDeposit" out of Cash on Hand. Cash on Hand = cash Toast recorded but not yet
+deposited; the daily email shows it.
+
+**Script Properties** (Apps Script → Project Settings): `TOAST_CLIENT_ID`,
+`TOAST_CLIENT_SECRET` (Analytics), `TOAST_STD_CLIENT_ID`,
+`TOAST_STD_CLIENT_SECRET` (Standard, orders:read), `QBO_CLIENT_ID`,
+`QBO_CLIENT_SECRET`, `START_DATE` (first card payout date), `CASH_START_DATE`
+(first cash business date), `SYNC_MODE` = `live` (anything else = dry run).
+
+**Running:** `installDailyTrigger` (daily), `startCatchUp` / `catchUpStatus`
+(history from START_DATE, hourly, Toast-rate-limit aware), `previewYesterday`
+and `previewCash` (dry runs), `checkSetup`, `debugPayoutDetail`,
+`listQuickBooksAccounts`, `showRecentPayouts`.
+
+Note: QuickBooks refuses direct postings to its built-in sales tax accounts, so
+tax is booked to the ordinary liability `Sales Tax Collected - Toast`. Sales
+tax returns are filed from Toast's reports.
 
 ## Where the numbers come from
 
