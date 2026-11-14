@@ -43,9 +43,10 @@ var CONFIG = {
     // runs heal themselves.
     lookbackDays: 14,
 
-    // Toast payout statuses that are safe to post. SENT = Toast sent it to the
-    // bank. CAPTURED payouts wait until they're SENT; NONE = failed.
-    postStatuses: ['SENT'],
+    // Toast payout statuses to post. Small payouts can stay CAPTURED in Toast
+    // even after the money reaches the bank (seen on Truck 4), so both post;
+    // NONE = failed payout and is held.
+    postStatuses: ['SENT', 'CAPTURED'],
 
     // 'deposit' (recommended: matches the bank feed line directly) or
     // 'journal'. Payouts that net to zero or below always use a journal entry.

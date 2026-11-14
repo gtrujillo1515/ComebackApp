@@ -453,7 +453,7 @@ function runCash_(startYmd, endYmd, dryRun, title) {
     notify_(title + ' FAILED', 'Cash sales could not be posted:\n\n' + (e.stack || e.message), true);
     throw e;
   }
-  var text = formatSyncResult(result).replace('payout sync', 'cash sales');
+  var text = formatSyncResult(result).replace('payout sync', 'cash sales').replace('for settled dates', 'for business dates');
   if (qbo) {
     try {
       var bal = qbo.accountBalance(CONFIG.cash.onHandAccount);
