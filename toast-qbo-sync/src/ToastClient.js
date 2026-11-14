@@ -10,6 +10,7 @@
 
 // /era/v1/payout/payments and /era/v1/check allow 5 POSTs per minute.
 var TOAST_SLOW_POST_GAP_MS = 13000;
+var TOAST_RATE_LIMIT_MSG = 'Toast API rate limit reached; the rest will be done on a later run';
 // Waits between polls while a report is being built (ms). ~3 minutes total.
 var TOAST_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000, 15000, 20000, 25000, 30000, 30000, 30000];
 
@@ -68,12 +69,17 @@ ToastClient.prototype.request = function (method, path, body) {
     }
     if (res.code === 429) {
       var retryAfter = Number(res.headers && (res.headers['Retry-After'] || res.headers['retry-after']));
-      Runtime.sleep((isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 15 * (attempt + 1)) * 1000);
+      var waitS = isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 15 * (attempt + 1);
+      // A long wait means a daily/hourly quota: stop and let the next run continue.
+      if (waitS > 60 || attempt >= 2) {
+        throw new Error(TOAST_RATE_LIMIT_MSG + ' (' + method.toUpperCase() + ' ' + path + ')');
+      }
+      Runtime.sleep(waitS * 1000);
       continue;
     }
     return res;
   }
-  throw new Error('Toast API kept rate-limiting ' + method.toUpperCase() + ' ' + path);
+  throw new Error(TOAST_RATE_LIMIT_MSG + ' (' + method.toUpperCase() + ' ' + path + ')');
 };
 
 ToastClient.prototype.reportBody_ = function (extra) {

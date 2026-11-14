@@ -7,7 +7,10 @@
  *   3. previewYesterday     - dry run for the most recent settled date, shows the entries
  *   4. runDailySync         - the real job (dry run unless Script Property SYNC_MODE = live)
  *   5. installDailyTrigger  - schedule runDailySync every day at CONFIG.sync.triggerHour
- *   backfill                - edit the dates inside it, then run it to catch up history
+ *   startCatchUp            - post every payout from START_DATE up to the last 14 days, one
+ *                             week per hour, automatically (about 60 payout days per day)
+ *   catchUpStatus / stopCatchUp
+ *   backfill                - edit the dates inside it, then run it to catch up a range once
  */
 
 function authorizeQuickBooks() {
@@ -219,7 +222,8 @@ function startDateFloor_() {
   return v ? toYmd(v) : '';
 }
 
-function runSync_(startYmd, endYmd, dryRun, title) {
+function runSync_(startYmd, endYmd, dryRun, title, opts) {
+  opts = opts || {};
   var floor = startDateFloor_();
   if (!dryRun && !floor) {
     throw new Error('Set Script Property START_DATE (e.g. 20261114) before turning on SYNC_MODE = live.');
@@ -249,6 +253,7 @@ function runSync_(startYmd, endYmd, dryRun, title) {
   }
   var text = formatSyncResult(result);
   Logger.log(text);
+  if (opts.quiet) return result; // caller reports
   var attention = syncNeedsAttention(result);
   var didSomething = result.posted.length || result.previews.length;
   if (attention || (CONFIG.sync.sendDailySummary && didSomething)) {
@@ -292,4 +297,94 @@ function removeDailyTrigger() {
     if (t.getHandlerFunction() === 'runDailySync') ScriptApp.deleteTrigger(t);
   });
   Logger.log('Daily trigger removed.');
+}
+
+/* ------------------------------------------------------------------------ */
+/* Catch-up: works from START_DATE forward, one week per hourly run, until it */
+/* reaches the window the daily sync covers. Toast allows ~60 detail reports  */
+/* a day, so it pauses itself when the limit is hit and continues next hour.  */
+/* ------------------------------------------------------------------------ */
+
+var CATCHUP_MAX_HELD = 60;
+
+function startCatchUp() {
+  var floor = startDateFloor_();
+  if (!floor) throw new Error('Set Script Property START_DATE (e.g. 20260101) first.');
+  if (!isLive_()) throw new Error('Catch-up only runs live (Script Property SYNC_MODE = live). Use previewYesterday to test first.');
+  var props = Runtime.props();
+  props.setProperty('CATCHUP_CURSOR', floor);
+  props.setProperty('CATCHUP_HELD', '[]');
+  props.setProperty('CATCHUP_COUNTS', JSON.stringify({ posted: 0, previews: 0, existing: 0, held: 0 }));
+  removeCatchUpTriggers_();
+  ScriptApp.newTrigger('catchUpStep').timeBased().everyHours(1).create();
+  Logger.log('Catch-up started from ' + ymdToIso(floor) + (isLive_() ? ' (LIVE).' : ' (DRY RUN - nothing written).') +
+    ' It runs every hour and emails you when it is finished.');
+  catchUpStep();
+}
+
+function stopCatchUp() {
+  removeCatchUpTriggers_();
+  Runtime.props().deleteProperty('CATCHUP_CURSOR');
+  Logger.log('Catch-up stopped.');
+}
+
+function catchUpStatus() {
+  var props = Runtime.props();
+  var cursor = props.getProperty('CATCHUP_CURSOR');
+  Logger.log(cursor ? 'Catch-up is at ' + ymdToIso(cursor) + '. Totals so far: ' + props.getProperty('CATCHUP_COUNTS') +
+    '\nHeld so far:\n' + JSON.parse(props.getProperty('CATCHUP_HELD') || '[]').join('\n') : 'No catch-up is running.');
+}
+
+function removeCatchUpTriggers_() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'catchUpStep') ScriptApp.deleteTrigger(t);
+  });
+}
+
+function catchUpStep() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return; // the daily sync is running; try next hour
+  try {
+    var props = Runtime.props();
+    var cursor = props.getProperty('CATCHUP_CURSOR');
+    if (!cursor) { removeCatchUpTriggers_(); return; }
+    var stopAt = addDaysYmd(todayYmd(), -CONFIG.sync.lookbackDays); // the daily sync covers the rest
+    if (cursor > stopAt) { finishCatchUp_(); return; }
+    var end = addDaysYmd(cursor, 6) < stopAt ? addDaysYmd(cursor, 6) : stopAt;
+    var result = runSync_(cursor, end, !isLive_(), 'Catch-up ' + ymdToIso(cursor) + '..' + ymdToIso(end), { quiet: true });
+    if (!result) { props.setProperty('CATCHUP_CURSOR', addDaysYmd(end, 1)); return; }
+
+    var counts = JSON.parse(props.getProperty('CATCHUP_COUNTS') || '{}');
+    counts.posted = (counts.posted || 0) + result.posted.length;
+    counts.previews = (counts.previews || 0) + result.previews.length;
+    counts.existing = (counts.existing || 0) + result.existing.length;
+    counts.held = (counts.held || 0) + result.held.length;
+    props.setProperty('CATCHUP_COUNTS', JSON.stringify(counts));
+    var held = JSON.parse(props.getProperty('CATCHUP_HELD') || '[]');
+    result.held.forEach(function (h) {
+      if (held.length < CATCHUP_MAX_HELD) held.push((h.label + ': ' + (h.reason || '')).slice(0, 220));
+    });
+    props.setProperty('CATCHUP_HELD', JSON.stringify(held));
+
+    if (result.errors.length) {
+      notify_('Catch-up needs attention', formatSyncResult(result) + '\n\nIt will retry this week on the next hourly run.', true);
+      return;
+    }
+    // Move on only when the whole week was handled; otherwise redo it next hour
+    // (already-posted payouts are detected and skipped).
+    if (!result.unfinished) props.setProperty('CATCHUP_CURSOR', addDaysYmd(end, 1));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function finishCatchUp_() {
+  var props = Runtime.props();
+  removeCatchUpTriggers_();
+  var counts = props.getProperty('CATCHUP_COUNTS');
+  var held = JSON.parse(props.getProperty('CATCHUP_HELD') || '[]');
+  props.deleteProperty('CATCHUP_CURSOR');
+  notify_('Catch-up finished', 'Catch-up from ' + ymdToIso(startDateFloor_()) + ' is complete.\nTotals: ' + counts +
+    (held.length ? '\n\nHELD payouts (not posted) - review these:\n' + held.join('\n') +
+      (held.length >= CATCHUP_MAX_HELD ? '\n(list truncated)' : '') : '\n\nNothing was held.'), held.length > 0);
 }

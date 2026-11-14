@@ -118,3 +118,16 @@ test('respects the restaurantIds filter and the time budget', () => {
   });
   assert.deepEqual(plain(filtered.posted.map((x) => x.label)), ['B 2026-11-10']);
 });
+
+test('a Toast rate limit stops the run cleanly and marks it unfinished', () => {
+  const ctx = load();
+  const toast = fakeToast([row('A', 'ga', '20261110'), row('B', 'gb', '20261110'), row('C', 'gc', '20261110')], (r) => {
+    if (r.restaurantGuid === 'gb') throw new Error(ctx.TOAST_RATE_LIMIT_MSG + ' (POST /era/v1/check/day)');
+    return goodDetail(r);
+  });
+  const r = ctx.syncPayouts({ config: config(ctx), toast, qbo: fakeQbo(), startYmd: '20261110', endYmd: '20261110', dryRun: false });
+  assert.equal(r.posted.length, 1);
+  assert.equal(r.errors.length, 0);
+  assert.equal(r.unfinished, true);
+  assert.equal(r.skipped.length, 2);
+});

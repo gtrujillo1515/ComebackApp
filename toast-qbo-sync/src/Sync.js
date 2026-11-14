@@ -115,7 +115,17 @@ function syncPayouts(opts) {
       result.posted.push(record);
       if (opts.onPayout) opts.onPayout(record, 'posted');
     } catch (e) {
-      result.errors.push({ label: label, error: String(e && e.message || e) });
+      var msg = String(e && e.message || e);
+      if (msg.indexOf(TOAST_RATE_LIMIT_MSG) === 0) {
+        result.unfinished = true;
+        result.rateLimited = true;
+        for (var k = i; k < rows.length; k++) {
+          result.skipped.push({ label: String(rows[k].restaurantName || rows[k].restaurantGuid).trim() + ' ' +
+            ymdToIso(rows[k].settledDate), reason: 'Toast rate limit reached; will continue next run.' });
+        }
+        break;
+      }
+      result.errors.push({ label: label, error: msg });
     }
   }
   return result;

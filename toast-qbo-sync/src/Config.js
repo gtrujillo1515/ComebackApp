@@ -116,6 +116,8 @@ var CONFIG = {
    *   method 'percent'   -> percent of `percentOf` ('payment' = card sales,
    *                         'withholding' = total withheld)
    *   `round: 'up'` rounds a percent rule up to the next cent, as Toast does
+   *   `optional: true` lets a rule be skipped on dates Toast clearly didn't take it
+   *   remainder rules may limit themselves with maxCents / maxPercentOfPayment
    *   method 'remainder' -> whatever is left
    * Any amount still left goes to accounts.unallocatedWithholding and you get
    * an alert.
@@ -123,13 +125,18 @@ var CONFIG = {
    * `startDate` / `endDate` (YYYYMMDD, optional) limit when a rule applies.
    */
   withholdingRules: [
-    // From Toast Payout Details + the Capital dashboard (Nov 2026). Percent = % of card sales.
-    { name: 'Toast Capital loan repayment (19.8%)', account: 'Toast Capital loan',
-      method: 'percent', percent: 19.8, percentOf: 'payment', round: 'up', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
-    { name: 'Toast equipment lease (0.75%)', account: 'Machinery & Equipment',
-      method: 'percent', percent: 0.75, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
-    { name: 'Toast Credit Card repayment (0.5%)', account: 'Toast Credit Card',
-      method: 'percent', percent: 0.5, percentOf: 'payment', round: 'up', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
+    // From Toast Payout Details + the Capital dashboards (Nov 2026). Percent = % of card sales.
+    // optional: true -> skipped automatically on dates Toast didn't take it (before a loan started).
+    { name: 'Toast Capital loan - Tacoma (19.8%)', account: 'Toast Capital loan', optional: true,
+      method: 'percent', percent: 19.8, percentOf: 'payment', round: 'up', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] },
+    { name: 'Toast Capital loan - Truck 2 (12.05%)', account: 'Toast Capital loan', optional: true,
+      method: 'percent', percent: 12.05, percentOf: 'payment', round: 'up', locations: ['e46bdc5d-4dbd-4103-9bdf-c270aaad4610'] },
+    { name: 'Toast Capital loan - Truck 4 (12.99%)', account: 'Toast Capital loan', optional: true,
+      method: 'percent', percent: 12.99, percentOf: 'payment', round: 'up', locations: ['39c00539-3850-487e-a353-f2285b5104ac'] },
+    { name: 'Toast equipment lease - Tacoma (0.75%)', account: 'Machinery & Equipment', optional: true,
+      method: 'percent', percent: 0.75, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] },
+    { name: 'Toast Credit Card repayment - Tacoma (0.5%)', account: 'Toast Credit Card', optional: true,
+      method: 'percent', percent: 0.5, percentOf: 'payment', round: 'up', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] },
     // Auto savings (38% of card sales, every location). Toast sends each slice to Toast
     // Checking or a jar as a "TOAST SAV" deposit, which bank rule #305 adds to
     // Sales:Toast Clearing, so these lines clear those deposits back out of it.
@@ -141,10 +148,12 @@ var CONFIG = {
       method: 'percent', percent: 2, percentOf: 'payment', round: 'up', locations: ['*'] },
     { name: 'Auto savings - Wrap Fund jar (2%)', account: 'Sales:Toast Clearing',
       method: 'percent', percent: 2, percentOf: 'payment', round: 'up', locations: ['*'] },
-    // Whatever Toast withheld beyond the rules above (Truck 2 ~12%, Truck 4 ~13% of card
-    // sales: to identify; plus delivery fees, marketplace tax). Allocate from Toast's statement.
-    { name: 'Other Toast withholdings (to allocate)',
-      account: 'Toast Capital Payments Pending Allocation', method: 'remainder', locations: ['*'] },
+    // Leftovers. Pennies from Toast rounding each payment -> Toast Clearing (nets with
+    // the SAV deposits). Up to 3% of card sales (delivery fees, marketplace tax) ->
+    // pending allocation. Anything bigger is HELD for review instead of guessed.
+    { name: 'Toast rounding', account: 'Sales:Toast Clearing', method: 'remainder', maxCents: 100, locations: ['*'] },
+    { name: 'Other Toast withholdings (delivery fees, MPF tax)', account: 'Toast Capital Payments Pending Allocation',
+      method: 'remainder', maxPercentOfPayment: 3, locations: ['*'] },
   ],
 
   /**

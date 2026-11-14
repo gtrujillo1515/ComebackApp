@@ -120,6 +120,8 @@ var CONFIG = {
    *   method 'percent'   -> percent of `percentOf` ('payment' = card sales,
    *                         'withholding' = total withheld)
    *   `round: 'up'` rounds a percent rule up to the next cent, as Toast does
+   *   `optional: true` lets a rule be skipped on dates Toast clearly didn't take it
+   *   remainder rules may limit themselves with maxCents / maxPercentOfPayment
    *   method 'remainder' -> whatever is left
    * Any amount still left goes to accounts.unallocatedWithholding and you get
    * an alert.
@@ -127,13 +129,18 @@ var CONFIG = {
    * `startDate` / `endDate` (YYYYMMDD, optional) limit when a rule applies.
    */
   withholdingRules: [
-    // From Toast Payout Details + the Capital dashboard (Nov 2026). Percent = % of card sales.
-    { name: 'Toast Capital loan repayment (19.8%)', account: 'Toast Capital loan',
-      method: 'percent', percent: 19.8, percentOf: 'payment', round: 'up', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
-    { name: 'Toast equipment lease (0.75%)', account: 'Machinery & Equipment',
-      method: 'percent', percent: 0.75, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
-    { name: 'Toast Credit Card repayment (0.5%)', account: 'Toast Credit Card',
-      method: 'percent', percent: 0.5, percentOf: 'payment', round: 'up', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] }, // Tacoma
+    // From Toast Payout Details + the Capital dashboards (Nov 2026). Percent = % of card sales.
+    // optional: true -> skipped automatically on dates Toast didn't take it (before a loan started).
+    { name: 'Toast Capital loan - Tacoma (19.8%)', account: 'Toast Capital loan', optional: true,
+      method: 'percent', percent: 19.8, percentOf: 'payment', round: 'up', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] },
+    { name: 'Toast Capital loan - Truck 2 (12.05%)', account: 'Toast Capital loan', optional: true,
+      method: 'percent', percent: 12.05, percentOf: 'payment', round: 'up', locations: ['e46bdc5d-4dbd-4103-9bdf-c270aaad4610'] },
+    { name: 'Toast Capital loan - Truck 4 (12.99%)', account: 'Toast Capital loan', optional: true,
+      method: 'percent', percent: 12.99, percentOf: 'payment', round: 'up', locations: ['39c00539-3850-487e-a353-f2285b5104ac'] },
+    { name: 'Toast equipment lease - Tacoma (0.75%)', account: 'Machinery & Equipment', optional: true,
+      method: 'percent', percent: 0.75, percentOf: 'payment', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] },
+    { name: 'Toast Credit Card repayment - Tacoma (0.5%)', account: 'Toast Credit Card', optional: true,
+      method: 'percent', percent: 0.5, percentOf: 'payment', round: 'up', locations: ['257c9926-e0f6-478f-aa82-5db0a7f8931b'] },
     // Auto savings (38% of card sales, every location). Toast sends each slice to Toast
     // Checking or a jar as a "TOAST SAV" deposit, which bank rule #305 adds to
     // Sales:Toast Clearing, so these lines clear those deposits back out of it.
@@ -145,10 +152,12 @@ var CONFIG = {
       method: 'percent', percent: 2, percentOf: 'payment', round: 'up', locations: ['*'] },
     { name: 'Auto savings - Wrap Fund jar (2%)', account: 'Sales:Toast Clearing',
       method: 'percent', percent: 2, percentOf: 'payment', round: 'up', locations: ['*'] },
-    // Whatever Toast withheld beyond the rules above (Truck 2 ~12%, Truck 4 ~13% of card
-    // sales: to identify; plus delivery fees, marketplace tax). Allocate from Toast's statement.
-    { name: 'Other Toast withholdings (to allocate)',
-      account: 'Toast Capital Payments Pending Allocation', method: 'remainder', locations: ['*'] },
+    // Leftovers. Pennies from Toast rounding each payment -> Toast Clearing (nets with
+    // the SAV deposits). Up to 3% of card sales (delivery fees, marketplace tax) ->
+    // pending allocation. Anything bigger is HELD for review instead of guessed.
+    { name: 'Toast rounding', account: 'Sales:Toast Clearing', method: 'remainder', maxCents: 100, locations: ['*'] },
+    { name: 'Other Toast withholdings (delivery fees, MPF tax)', account: 'Toast Capital Payments Pending Allocation',
+      method: 'remainder', maxPercentOfPayment: 3, locations: ['*'] },
   ],
 
   /**
@@ -174,7 +183,10 @@ var CONFIG = {
  *   3. previewYesterday     - dry run for the most recent settled date, shows the entries
  *   4. runDailySync         - the real job (dry run unless Script Property SYNC_MODE = live)
  *   5. installDailyTrigger  - schedule runDailySync every day at CONFIG.sync.triggerHour
- *   backfill                - edit the dates inside it, then run it to catch up history
+ *   startCatchUp            - post every payout from START_DATE up to the last 14 days, one
+ *                             week per hour, automatically (about 60 payout days per day)
+ *   catchUpStatus / stopCatchUp
+ *   backfill                - edit the dates inside it, then run it to catch up a range once
  */
 
 function authorizeQuickBooks() {
@@ -386,7 +398,8 @@ function startDateFloor_() {
   return v ? toYmd(v) : '';
 }
 
-function runSync_(startYmd, endYmd, dryRun, title) {
+function runSync_(startYmd, endYmd, dryRun, title, opts) {
+  opts = opts || {};
   var floor = startDateFloor_();
   if (!dryRun && !floor) {
     throw new Error('Set Script Property START_DATE (e.g. 20261114) before turning on SYNC_MODE = live.');
@@ -416,6 +429,7 @@ function runSync_(startYmd, endYmd, dryRun, title) {
   }
   var text = formatSyncResult(result);
   Logger.log(text);
+  if (opts.quiet) return result; // caller reports
   var attention = syncNeedsAttention(result);
   var didSomething = result.posted.length || result.previews.length;
   if (attention || (CONFIG.sync.sendDailySummary && didSomething)) {
@@ -459,6 +473,96 @@ function removeDailyTrigger() {
     if (t.getHandlerFunction() === 'runDailySync') ScriptApp.deleteTrigger(t);
   });
   Logger.log('Daily trigger removed.');
+}
+
+/* ------------------------------------------------------------------------ */
+/* Catch-up: works from START_DATE forward, one week per hourly run, until it */
+/* reaches the window the daily sync covers. Toast allows ~60 detail reports  */
+/* a day, so it pauses itself when the limit is hit and continues next hour.  */
+/* ------------------------------------------------------------------------ */
+
+var CATCHUP_MAX_HELD = 60;
+
+function startCatchUp() {
+  var floor = startDateFloor_();
+  if (!floor) throw new Error('Set Script Property START_DATE (e.g. 20260101) first.');
+  if (!isLive_()) throw new Error('Catch-up only runs live (Script Property SYNC_MODE = live). Use previewYesterday to test first.');
+  var props = Runtime.props();
+  props.setProperty('CATCHUP_CURSOR', floor);
+  props.setProperty('CATCHUP_HELD', '[]');
+  props.setProperty('CATCHUP_COUNTS', JSON.stringify({ posted: 0, previews: 0, existing: 0, held: 0 }));
+  removeCatchUpTriggers_();
+  ScriptApp.newTrigger('catchUpStep').timeBased().everyHours(1).create();
+  Logger.log('Catch-up started from ' + ymdToIso(floor) + (isLive_() ? ' (LIVE).' : ' (DRY RUN - nothing written).') +
+    ' It runs every hour and emails you when it is finished.');
+  catchUpStep();
+}
+
+function stopCatchUp() {
+  removeCatchUpTriggers_();
+  Runtime.props().deleteProperty('CATCHUP_CURSOR');
+  Logger.log('Catch-up stopped.');
+}
+
+function catchUpStatus() {
+  var props = Runtime.props();
+  var cursor = props.getProperty('CATCHUP_CURSOR');
+  Logger.log(cursor ? 'Catch-up is at ' + ymdToIso(cursor) + '. Totals so far: ' + props.getProperty('CATCHUP_COUNTS') +
+    '\nHeld so far:\n' + JSON.parse(props.getProperty('CATCHUP_HELD') || '[]').join('\n') : 'No catch-up is running.');
+}
+
+function removeCatchUpTriggers_() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'catchUpStep') ScriptApp.deleteTrigger(t);
+  });
+}
+
+function catchUpStep() {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) return; // the daily sync is running; try next hour
+  try {
+    var props = Runtime.props();
+    var cursor = props.getProperty('CATCHUP_CURSOR');
+    if (!cursor) { removeCatchUpTriggers_(); return; }
+    var stopAt = addDaysYmd(todayYmd(), -CONFIG.sync.lookbackDays); // the daily sync covers the rest
+    if (cursor > stopAt) { finishCatchUp_(); return; }
+    var end = addDaysYmd(cursor, 6) < stopAt ? addDaysYmd(cursor, 6) : stopAt;
+    var result = runSync_(cursor, end, !isLive_(), 'Catch-up ' + ymdToIso(cursor) + '..' + ymdToIso(end), { quiet: true });
+    if (!result) { props.setProperty('CATCHUP_CURSOR', addDaysYmd(end, 1)); return; }
+
+    var counts = JSON.parse(props.getProperty('CATCHUP_COUNTS') || '{}');
+    counts.posted = (counts.posted || 0) + result.posted.length;
+    counts.previews = (counts.previews || 0) + result.previews.length;
+    counts.existing = (counts.existing || 0) + result.existing.length;
+    counts.held = (counts.held || 0) + result.held.length;
+    props.setProperty('CATCHUP_COUNTS', JSON.stringify(counts));
+    var held = JSON.parse(props.getProperty('CATCHUP_HELD') || '[]');
+    result.held.forEach(function (h) {
+      if (held.length < CATCHUP_MAX_HELD) held.push((h.label + ': ' + (h.reason || '')).slice(0, 220));
+    });
+    props.setProperty('CATCHUP_HELD', JSON.stringify(held));
+
+    if (result.errors.length) {
+      notify_('Catch-up needs attention', formatSyncResult(result) + '\n\nIt will retry this week on the next hourly run.', true);
+      return;
+    }
+    // Move on only when the whole week was handled; otherwise redo it next hour
+    // (already-posted payouts are detected and skipped).
+    if (!result.unfinished) props.setProperty('CATCHUP_CURSOR', addDaysYmd(end, 1));
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function finishCatchUp_() {
+  var props = Runtime.props();
+  removeCatchUpTriggers_();
+  var counts = props.getProperty('CATCHUP_COUNTS');
+  var held = JSON.parse(props.getProperty('CATCHUP_HELD') || '[]');
+  props.deleteProperty('CATCHUP_CURSOR');
+  notify_('Catch-up finished', 'Catch-up from ' + ymdToIso(startDateFloor_()) + ' is complete.\nTotals: ' + counts +
+    (held.length ? '\n\nHELD payouts (not posted) - review these:\n' + held.join('\n') +
+      (held.length >= CATCHUP_MAX_HELD ? '\n(list truncated)' : '') : '\n\nNothing was held.'), held.length > 0);
 }
 
 // ===== Util.js =====
@@ -691,47 +795,86 @@ function computeCardComponents(payments, checksByGuid, defaultTaxRate) {
   return out;
 }
 
-/** Split Toast's single withholding total across the configured rules. */
-function allocateWithholding(withholdingCents, ctx, rules) {
+/** How much a non-remainder rule wants to take, in cents. */
+function ruleWantCents(r, withholdingCents, ctx) {
+  if (r.method === 'fixed') return toCents(r.amount);
+  if (r.method === 'percent') {
+    var base = r.percentOf === 'withholding' ? withholdingCents : ctx.paymentCents;
+    var exact = base * Number(r.percent) / 100;
+    // Toast rounds its percentage withholdings up to the next cent.
+    return r.round === 'up' ? Math.ceil(exact - 1e-9) : Math.round(exact);
+  }
+  if (r.method === 'matchPayout') {
+    return Math.round((ctx.payoutCents || 0) * (r.percent === undefined ? 100 : Number(r.percent)) / 100);
+  }
+  throw new Error('Unknown withholding rule method "' + r.method + '" on rule "' + r.name + '"');
+}
+
+function allocateWithholdingOnce_(withholdingCents, ctx, applicable) {
   var lines = [];
   var remaining = withholdingCents;
-  var applicable = (rules || []).filter(function (r) {
-    return ruleApplies(r, ctx.restaurantGuid, ctx.restaurantName, ctx.settledDate);
-  });
-
+  var shortCents = 0; // what the rules wanted but Toast didn't withhold
+  var leftoverCents = 0; // what a remainder rule had to absorb
   if (withholdingCents > 0) {
     applicable.forEach(function (r) {
-      if (r.method === 'remainder' || remaining <= 0) return;
-      var want;
-      if (r.method === 'fixed') {
-        want = toCents(r.amount);
-      } else if (r.method === 'percent') {
-        var base = r.percentOf === 'withholding' ? withholdingCents : ctx.paymentCents;
-        var exact = base * Number(r.percent) / 100;
-        // Toast rounds its percentage withholdings up to the next cent.
-        want = r.round === 'up' ? Math.ceil(exact - 1e-9) : Math.round(exact);
-      } else if (r.method === 'matchPayout') {
-        // Toast Checking auto savings: Toast splits what's left ~50/50 between
-        // Toast Checking and the outside bank, so it equals the payout amount.
-        want = Math.round((ctx.payoutCents || 0) * (r.percent === undefined ? 100 : Number(r.percent)) / 100);
-      } else {
-        throw new Error('Unknown withholding rule method "' + r.method + '" on rule "' + r.name + '"');
-      }
-      var take = Math.min(Math.max(want, 0), remaining);
+      if (r.method === 'remainder') return;
+      var want = Math.max(ruleWantCents(r, withholdingCents, ctx), 0);
+      var take = Math.min(want, Math.max(remaining, 0));
+      shortCents += want - take;
       if (take > 0) {
         lines.push({ name: r.name, account: r.account, cents: take });
         remaining -= take;
       }
     });
   }
-
-  // The remainder rule also absorbs negative withholdings (Toast reversals).
-  var remainderRule = applicable.filter(function (r) { return r.method === 'remainder'; })[0];
-  if (remaining !== 0 && remainderRule) {
-    lines.push({ name: remainderRule.name, account: remainderRule.account, cents: remaining });
-    remaining = 0;
+  // Remainder rules, in order: the first whose limits fit takes what's left.
+  // maxCents / maxPercentOfPayment let a rule take only small leftovers
+  // (rounding, delivery fees) so a big unexplained amount is held instead.
+  if (remaining !== 0) {
+    var abs = Math.abs(remaining);
+    var rr = applicable.filter(function (r) {
+      if (r.method !== 'remainder') return false;
+      if (r.maxCents !== undefined && abs > r.maxCents) return false;
+      if (r.maxPercentOfPayment !== undefined && abs > ctx.paymentCents * r.maxPercentOfPayment / 100) return false;
+      return true;
+    })[0];
+    if (rr) {
+      lines.push({ name: rr.name, account: rr.account, cents: remaining });
+      leftoverCents = abs;
+      remaining = 0;
+    }
   }
-  return { lines: lines, unallocatedCents: remaining };
+  return { lines: lines, unallocatedCents: remaining, shortCents: shortCents, leftoverCents: leftoverCents };
+}
+
+/**
+ * Split Toast's single withholding total across the configured rules.
+ * Rules marked `optional: true` (loans, leases) are dropped when Toast clearly
+ * didn't take them that day, i.e. when keeping them leaves the rules short.
+ */
+function allocateWithholding(withholdingCents, ctx, rules, toleranceCents) {
+  var tol = toleranceCents === undefined ? 100 : toleranceCents;
+  var applicable = (rules || []).filter(function (r) {
+    return ruleApplies(r, ctx.restaurantGuid, ctx.restaurantName, ctx.settledDate);
+  });
+  var result = allocateWithholdingOnce_(withholdingCents, ctx, applicable);
+  var optional = applicable.filter(function (r) { return r.optional; });
+  if (result.shortCents <= tol || !optional.length || optional.length > 6) return result;
+  // Try leaving out the fewest optional rules that makes Toast's total add up.
+  var best = null;
+  for (var mask = 1; mask < (1 << optional.length); mask++) {
+    var dropped = optional.filter(function (r, i) { return mask & (1 << i); });
+    var attempt = allocateWithholdingOnce_(withholdingCents, ctx,
+      applicable.filter(function (r) { return dropped.indexOf(r) < 0; }));
+    if (attempt.shortCents > tol || attempt.unallocatedCents !== 0) continue;
+    // Prefer the closest fit (smallest leftover), then the fewest rules left out.
+    if (!best || attempt.leftoverCents < best.leftoverCents ||
+        (attempt.leftoverCents === best.leftoverCents && dropped.length < best.skippedOptional.length)) {
+      attempt.skippedOptional = dropped.map(function (r) { return r.name; });
+      best = attempt;
+    }
+  }
+  return best || result;
 }
 
 /** Amounts swept out of the payout before it reaches the outside bank. */
@@ -807,10 +950,22 @@ function buildPayoutBreakdown(args) {
   }
 
   var ctx = { restaurantGuid: guid, restaurantName: name, settledDate: settledDate, paymentCents: c.payment, payoutCents: c.payout };
-  var wh = allocateWithholding(c.withholding, ctx, config.withholdingRules);
+  var wh = allocateWithholding(c.withholding, ctx, config.withholdingRules, tolerance);
+  var strict = config.sync.holdUnexplainedWithholding !== false;
+  if (wh.shortCents > tolerance) {
+    holdReasons.push('Toast withheld ' + formatMoney(wh.shortCents) + ' less than the withholding rules expect; ' +
+      'rates were probably different on this date (add startDate/endDate to the rules).');
+  }
   if (wh.unallocatedCents !== 0) {
-    warnings.push(formatMoney(wh.unallocatedCents) + ' of withholdings not covered by withholdingRules; booked to "' +
-      acct.unallocatedWithholding + '".');
+    var msg = formatMoney(wh.unallocatedCents) + ' of Toast withholdings is not explained by the withholding rules';
+    if (strict) {
+      holdReasons.push(msg + ' (' + formatMoney(c.withholding) + ' withheld in total). Check this payout in Toast.');
+    } else {
+      warnings.push(msg + '; booked to "' + acct.unallocatedWithholding + '".');
+    }
+  }
+  if (wh.skippedOptional && wh.skippedOptional.length) {
+    warnings.push('Not taken by Toast on this date, so skipped: ' + wh.skippedOptional.join(', ') + '.');
   }
 
   var splits = computePayoutSplits(c.payout, ctx, config.payoutSplits);
@@ -891,6 +1046,7 @@ function describeBreakdown(b) {
 
 // /era/v1/payout/payments and /era/v1/check allow 5 POSTs per minute.
 var TOAST_SLOW_POST_GAP_MS = 13000;
+var TOAST_RATE_LIMIT_MSG = 'Toast API rate limit reached; the rest will be done on a later run';
 // Waits between polls while a report is being built (ms). ~3 minutes total.
 var TOAST_POLL_DELAYS_MS = [2000, 3000, 5000, 8000, 10000, 15000, 20000, 25000, 30000, 30000, 30000];
 
@@ -949,12 +1105,17 @@ ToastClient.prototype.request = function (method, path, body) {
     }
     if (res.code === 429) {
       var retryAfter = Number(res.headers && (res.headers['Retry-After'] || res.headers['retry-after']));
-      Runtime.sleep((isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 15 * (attempt + 1)) * 1000);
+      var waitS = isFinite(retryAfter) && retryAfter > 0 ? retryAfter : 15 * (attempt + 1);
+      // A long wait means a daily/hourly quota: stop and let the next run continue.
+      if (waitS > 60 || attempt >= 2) {
+        throw new Error(TOAST_RATE_LIMIT_MSG + ' (' + method.toUpperCase() + ' ' + path + ')');
+      }
+      Runtime.sleep(waitS * 1000);
       continue;
     }
     return res;
   }
-  throw new Error('Toast API kept rate-limiting ' + method.toUpperCase() + ' ' + path);
+  throw new Error(TOAST_RATE_LIMIT_MSG + ' (' + method.toUpperCase() + ' ' + path + ')');
 };
 
 ToastClient.prototype.reportBody_ = function (extra) {
@@ -1563,7 +1724,17 @@ function syncPayouts(opts) {
       result.posted.push(record);
       if (opts.onPayout) opts.onPayout(record, 'posted');
     } catch (e) {
-      result.errors.push({ label: label, error: String(e && e.message || e) });
+      var msg = String(e && e.message || e);
+      if (msg.indexOf(TOAST_RATE_LIMIT_MSG) === 0) {
+        result.unfinished = true;
+        result.rateLimited = true;
+        for (var k = i; k < rows.length; k++) {
+          result.skipped.push({ label: String(rows[k].restaurantName || rows[k].restaurantGuid).trim() + ' ' +
+            ymdToIso(rows[k].settledDate), reason: 'Toast rate limit reached; will continue next run.' });
+        }
+        break;
+      }
+      result.errors.push({ label: label, error: msg });
     }
   }
   return result;

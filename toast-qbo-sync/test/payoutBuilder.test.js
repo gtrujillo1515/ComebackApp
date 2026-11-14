@@ -100,14 +100,22 @@ test('small card differences within tolerance go to sales with a warning', () =>
   assert.match(b.warnings.join(), /differs from payout total/);
 });
 
-test('withholdings with no matching rule go to the unallocated account', () => {
+test('withholdings no rule explains are HELD by default', () => {
   const ctx = load();
-  const cfg = config(ctx, { withholdingRules: [] });
+  const b = ctx.buildPayoutBreakdown({ row: sampleRow(), payments: samplePayments(), checksByGuid: sampleChecks(),
+    config: config(ctx, { withholdingRules: [] }) });
+  assert.equal(b.ok, false);
+  assert.match(b.holdReasons.join(), /not explained by the withholding rules/);
+});
+
+test('with holdUnexplainedWithholding off, they go to the unallocated account', () => {
+  const ctx = load();
+  const cfg = config(ctx, { withholdingRules: [], sync: { holdUnexplainedWithholding: false } });
   const b = ctx.buildPayoutBreakdown({ row: sampleRow(), payments: samplePayments(), checksByGuid: sampleChecks(), config: cfg });
   const line = b.lines.find((l) => l.role === 'withholding');
   assert.equal(line.account, 'Toast Withholdings - Unallocated');
   assert.equal(line.cents, 12000);
-  assert.match(b.warnings.join(), /not covered by withholdingRules/);
+  assert.match(b.warnings.join(), /not explained by the withholding rules; booked to/);
 });
 
 test('withholding rules respect date windows and percent rules', () => {
@@ -119,7 +127,7 @@ test('withholding rules respect date windows and percent rules', () => {
     { name: 'Rest', account: 'Other', method: 'remainder' },
   ];
   const r = plain(ctx.allocateWithholding(10000, ctxArgs, rules));
-  assert.deepEqual(r, { lines: [{ name: 'Capital 8%', account: 'Capital', cents: 8000 }, { name: 'Rest', account: 'Other', cents: 2000 }], unallocatedCents: 0 });
+  assert.deepEqual(r, { lines: [{ name: 'Capital 8%', account: 'Capital', cents: 8000 }, { name: 'Rest', account: 'Other', cents: 2000 }], unallocatedCents: 0, shortCents: 0, leftoverCents: 2000 });
   // Negative (reversal) goes to the remainder rule.
   const neg = plain(ctx.allocateWithholding(-500, ctxArgs, rules));
   assert.deepEqual(neg.lines, [{ name: 'Rest', account: 'Other', cents: -500 }]);
@@ -205,4 +213,34 @@ test('Tacoma Nov 11 payout matches Toast Payout Details to the cent with the rea
   assert.deepEqual(plain(w), { Capital: 19259, Lease: 729, 'Credit card': 487,
     'Sav main': 16535, 'Sav tax': 16535, 'Sav rent': 1946, 'Sav wrap': 1946 });
   assert.equal(b.bankCents, 36884);
+});
+
+test('optional loan rule is skipped on days Toast took no loan payment; big gaps are held', () => {
+  const ctx = load();
+  const G = 'truck2';
+  const rules = [
+    { name: 'Loan 12.05%', account: 'Loan', method: 'percent', percent: 12.05, percentOf: 'payment', round: 'up', optional: true, locations: [G] },
+    { name: 'Savings 38%', account: 'Clearing', method: 'percent', percent: 38, percentOf: 'payment', round: 'up', locations: ['*'] },
+    { name: 'Rounding', account: 'Clearing', method: 'remainder', maxCents: 100, locations: ['*'] },
+    { name: 'Other', account: 'Pending', method: 'remainder', maxPercentOfPayment: 3, locations: ['*'] },
+  ];
+  const ctxArgs = { restaurantGuid: G, restaurantName: 'Truck 2', settledDate: '20260315', paymentCents: 100000 };
+  // Loan active: 12.05% + 38% = 50.05%
+  let r = plain(ctx.allocateWithholding(50050, ctxArgs, rules, 100));
+  assert.deepEqual(r.lines.map((l) => [l.name, l.cents]), [['Loan 12.05%', 12050], ['Savings 38%', 38000]]);
+  // Before the loan: only 38% withheld -> loan skipped, nothing short
+  r = plain(ctx.allocateWithholding(38000, ctxArgs, rules, 100));
+  assert.deepEqual(r.lines.map((l) => [l.name, l.cents]), [['Savings 38%', 38000]]);
+  assert.deepEqual(r.skippedOptional, ['Loan 12.05%']);
+  // Small extra (delivery fees 1.2%) -> Pending; pennies -> Clearing
+  r = plain(ctx.allocateWithholding(51250, ctxArgs, rules, 100));
+  assert.deepEqual(r.lines.map((l) => [l.name, l.cents]), [['Loan 12.05%', 12050], ['Savings 38%', 38000], ['Other', 1200]]);
+  r = plain(ctx.allocateWithholding(50057, ctxArgs, rules, 100));
+  assert.equal(r.lines.at(-1).name, 'Rounding');
+  // Large unexplained amount (10% extra) -> left unallocated so the payout is held
+  r = plain(ctx.allocateWithholding(60050, ctxArgs, rules, 100));
+  assert.equal(r.unallocatedCents, 10000);
+  // Savings rate lower than expected (e.g. jars were 21% then) -> short -> held
+  r = plain(ctx.allocateWithholding(21000, ctxArgs, rules, 100));
+  assert.ok(r.shortCents > 100);
 });

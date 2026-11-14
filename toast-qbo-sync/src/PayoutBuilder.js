@@ -106,47 +106,86 @@ function computeCardComponents(payments, checksByGuid, defaultTaxRate) {
   return out;
 }
 
-/** Split Toast's single withholding total across the configured rules. */
-function allocateWithholding(withholdingCents, ctx, rules) {
+/** How much a non-remainder rule wants to take, in cents. */
+function ruleWantCents(r, withholdingCents, ctx) {
+  if (r.method === 'fixed') return toCents(r.amount);
+  if (r.method === 'percent') {
+    var base = r.percentOf === 'withholding' ? withholdingCents : ctx.paymentCents;
+    var exact = base * Number(r.percent) / 100;
+    // Toast rounds its percentage withholdings up to the next cent.
+    return r.round === 'up' ? Math.ceil(exact - 1e-9) : Math.round(exact);
+  }
+  if (r.method === 'matchPayout') {
+    return Math.round((ctx.payoutCents || 0) * (r.percent === undefined ? 100 : Number(r.percent)) / 100);
+  }
+  throw new Error('Unknown withholding rule method "' + r.method + '" on rule "' + r.name + '"');
+}
+
+function allocateWithholdingOnce_(withholdingCents, ctx, applicable) {
   var lines = [];
   var remaining = withholdingCents;
-  var applicable = (rules || []).filter(function (r) {
-    return ruleApplies(r, ctx.restaurantGuid, ctx.restaurantName, ctx.settledDate);
-  });
-
+  var shortCents = 0; // what the rules wanted but Toast didn't withhold
+  var leftoverCents = 0; // what a remainder rule had to absorb
   if (withholdingCents > 0) {
     applicable.forEach(function (r) {
-      if (r.method === 'remainder' || remaining <= 0) return;
-      var want;
-      if (r.method === 'fixed') {
-        want = toCents(r.amount);
-      } else if (r.method === 'percent') {
-        var base = r.percentOf === 'withholding' ? withholdingCents : ctx.paymentCents;
-        var exact = base * Number(r.percent) / 100;
-        // Toast rounds its percentage withholdings up to the next cent.
-        want = r.round === 'up' ? Math.ceil(exact - 1e-9) : Math.round(exact);
-      } else if (r.method === 'matchPayout') {
-        // Toast Checking auto savings: Toast splits what's left ~50/50 between
-        // Toast Checking and the outside bank, so it equals the payout amount.
-        want = Math.round((ctx.payoutCents || 0) * (r.percent === undefined ? 100 : Number(r.percent)) / 100);
-      } else {
-        throw new Error('Unknown withholding rule method "' + r.method + '" on rule "' + r.name + '"');
-      }
-      var take = Math.min(Math.max(want, 0), remaining);
+      if (r.method === 'remainder') return;
+      var want = Math.max(ruleWantCents(r, withholdingCents, ctx), 0);
+      var take = Math.min(want, Math.max(remaining, 0));
+      shortCents += want - take;
       if (take > 0) {
         lines.push({ name: r.name, account: r.account, cents: take });
         remaining -= take;
       }
     });
   }
-
-  // The remainder rule also absorbs negative withholdings (Toast reversals).
-  var remainderRule = applicable.filter(function (r) { return r.method === 'remainder'; })[0];
-  if (remaining !== 0 && remainderRule) {
-    lines.push({ name: remainderRule.name, account: remainderRule.account, cents: remaining });
-    remaining = 0;
+  // Remainder rules, in order: the first whose limits fit takes what's left.
+  // maxCents / maxPercentOfPayment let a rule take only small leftovers
+  // (rounding, delivery fees) so a big unexplained amount is held instead.
+  if (remaining !== 0) {
+    var abs = Math.abs(remaining);
+    var rr = applicable.filter(function (r) {
+      if (r.method !== 'remainder') return false;
+      if (r.maxCents !== undefined && abs > r.maxCents) return false;
+      if (r.maxPercentOfPayment !== undefined && abs > ctx.paymentCents * r.maxPercentOfPayment / 100) return false;
+      return true;
+    })[0];
+    if (rr) {
+      lines.push({ name: rr.name, account: rr.account, cents: remaining });
+      leftoverCents = abs;
+      remaining = 0;
+    }
   }
-  return { lines: lines, unallocatedCents: remaining };
+  return { lines: lines, unallocatedCents: remaining, shortCents: shortCents, leftoverCents: leftoverCents };
+}
+
+/**
+ * Split Toast's single withholding total across the configured rules.
+ * Rules marked `optional: true` (loans, leases) are dropped when Toast clearly
+ * didn't take them that day, i.e. when keeping them leaves the rules short.
+ */
+function allocateWithholding(withholdingCents, ctx, rules, toleranceCents) {
+  var tol = toleranceCents === undefined ? 100 : toleranceCents;
+  var applicable = (rules || []).filter(function (r) {
+    return ruleApplies(r, ctx.restaurantGuid, ctx.restaurantName, ctx.settledDate);
+  });
+  var result = allocateWithholdingOnce_(withholdingCents, ctx, applicable);
+  var optional = applicable.filter(function (r) { return r.optional; });
+  if (result.shortCents <= tol || !optional.length || optional.length > 6) return result;
+  // Try leaving out the fewest optional rules that makes Toast's total add up.
+  var best = null;
+  for (var mask = 1; mask < (1 << optional.length); mask++) {
+    var dropped = optional.filter(function (r, i) { return mask & (1 << i); });
+    var attempt = allocateWithholdingOnce_(withholdingCents, ctx,
+      applicable.filter(function (r) { return dropped.indexOf(r) < 0; }));
+    if (attempt.shortCents > tol || attempt.unallocatedCents !== 0) continue;
+    // Prefer the closest fit (smallest leftover), then the fewest rules left out.
+    if (!best || attempt.leftoverCents < best.leftoverCents ||
+        (attempt.leftoverCents === best.leftoverCents && dropped.length < best.skippedOptional.length)) {
+      attempt.skippedOptional = dropped.map(function (r) { return r.name; });
+      best = attempt;
+    }
+  }
+  return best || result;
 }
 
 /** Amounts swept out of the payout before it reaches the outside bank. */
@@ -222,10 +261,22 @@ function buildPayoutBreakdown(args) {
   }
 
   var ctx = { restaurantGuid: guid, restaurantName: name, settledDate: settledDate, paymentCents: c.payment, payoutCents: c.payout };
-  var wh = allocateWithholding(c.withholding, ctx, config.withholdingRules);
+  var wh = allocateWithholding(c.withholding, ctx, config.withholdingRules, tolerance);
+  var strict = config.sync.holdUnexplainedWithholding !== false;
+  if (wh.shortCents > tolerance) {
+    holdReasons.push('Toast withheld ' + formatMoney(wh.shortCents) + ' less than the withholding rules expect; ' +
+      'rates were probably different on this date (add startDate/endDate to the rules).');
+  }
   if (wh.unallocatedCents !== 0) {
-    warnings.push(formatMoney(wh.unallocatedCents) + ' of withholdings not covered by withholdingRules; booked to "' +
-      acct.unallocatedWithholding + '".');
+    var msg = formatMoney(wh.unallocatedCents) + ' of Toast withholdings is not explained by the withholding rules';
+    if (strict) {
+      holdReasons.push(msg + ' (' + formatMoney(c.withholding) + ' withheld in total). Check this payout in Toast.');
+    } else {
+      warnings.push(msg + '; booked to "' + acct.unallocatedWithholding + '".');
+    }
+  }
+  if (wh.skippedOptional && wh.skippedOptional.length) {
+    warnings.push('Not taken by Toast on this date, so skipped: ' + wh.skippedOptional.join(', ') + '.');
   }
 
   var splits = computePayoutSplits(c.payout, ctx, config.payoutSplits);
