@@ -90,7 +90,7 @@ var CONFIG = {
     // accounts, so Toast Clearing nets to ~$0 and nothing needs matching by hand.
     deposit: 'Sales:Toast Clearing',
     sales: 'Sales',                        // income: food & beverage sales
-    salesTax: 'Sales Tax Payable - Toast', // liability (TO CONFIRM: name of your sales tax liability account)
+    salesTax: 'Sales Tax Collected - Toast', // liability; QuickBooks blocks posting to its built-in tax accounts
     tips: 'Tips Payable',                  // liability (TO CONFIRM: card tips owed to staff)
     gratuity: 'Tips Payable',              // liability: auto-gratuity / service charges paid to staff
     refunds: 'Refunds & Discounts',        // contra-income
