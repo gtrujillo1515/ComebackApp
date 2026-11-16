@@ -142,6 +142,7 @@
           <input id="name" type="text" maxlength="10" placeholder="AAA" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Name or initials">
           <button id="save">SAVE</button>
         </div>
+        <div class="hint" id="nameMsg" style="color:var(--red);opacity:1;margin-top:6px"></div>
       </div>
       <button class="play" id="again">PLAY AGAIN</button>
       <button class="ghost" id="boardBtn2">🏆 HIGH SCORES</button>
@@ -153,6 +154,7 @@
       <h2>🏆 High Scores</h2>
       <ol id="list"></ol>
       <p id="empty" hidden>No scores yet. Be the first!</p>
+      <div class="hint" id="boardNote"></div>
       <button class="play" id="boardPlay">PLAY</button>
       <button class="ghost" id="boardClose">BACK</button>
     </div>
@@ -433,35 +435,77 @@
     spawn(); hud();
   }
 
-  // ---------- leaderboard (saved on this device) ----------
+  // ---------- leaderboard ----------
+  // Shared leaderboard: paste your Supabase Project URL and publishable (anon) key here.
+  // Leave both empty to keep scores on this device only. Never put a secret / service_role key here.
+  const SUPABASE_URL = '';
+  const SUPABASE_KEY = '';
+  const ONLINE = !!(SUPABASE_URL && SUPABASE_KEY);
+  const API = SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/scores';
+  const HDRS = { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
   const BOARD_MAX = 10;
-  let pending = false;
+  let pending = false, remote = null;
+
   function loadBoard() {
     try { const b = JSON.parse(store.get('stacks_board', '[]')); return Array.isArray(b) ? b.filter(e => e && typeof e.s === 'number') : []; }
     catch (e) { return []; }
   }
+  async function fetchRemote() {
+    if (!ONLINE) return null;
+    try {
+      const r = await fetch(API + '?select=name,score,burgers&order=score.desc,created_at.asc&limit=' + BOARD_MAX, { headers: HDRS, cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      remote = (await r.json()).map(e => ({ n: String(e.name), s: +e.score, b: +e.burgers || 0 }));
+      return remote;
+    } catch (e) { return null; }
+  }
+  const currentBoard = () => (ONLINE && remote) ? remote : loadBoard();
+
   const cleanName = v => (v || '').toUpperCase().replace(/[^A-Z0-9 .'&-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10);
-  function showBoard(meId) {
-    const list = $('list'), b = loadBoard(); list.textContent = '';
+  const RUDE = ['FUCK', 'FUK', 'SHIT', 'BITCH', 'CUNT', 'DICK', 'COCK', 'PUSSY', 'NIGG', 'NIGA', 'FAG', 'SLUT', 'WHORE', 'RAPE', 'NAZI', 'PORN', 'PENIS', 'VAGINA', 'ASSHOLE', 'BASTARD', 'TITS', 'CUM', 'SEX'];
+  function isRude(n) {
+    const t = n.replace(/0/g, 'O').replace(/1/g, 'I').replace(/3/g, 'E').replace(/4/g, 'A').replace(/5/g, 'S').replace(/7/g, 'T').replace(/[^A-Z]/g, '');
+    return RUDE.some(w => t.includes(w));
+  }
+
+  function renderBoard(b, me, note) {
+    const list = $('list'); list.textContent = '';
+    let marked = false;
     b.forEach((e, i) => {
-      const li = document.createElement('li'); if (e.t === meId) li.className = 'me';
+      const li = document.createElement('li');
+      if (me && !marked && e.n === me.n && e.s === me.s) { li.className = 'me'; marked = true; }
       [['pos', (i + 1) + '.'], ['nm', e.n], ['bg', '🍔' + (e.b || 0)], ['sc', e.s]].forEach(([c, t]) => {
         const sp = document.createElement('span'); sp.className = c; sp.textContent = t; li.appendChild(sp);
       });
       list.appendChild(li);
     });
-    $('empty').hidden = b.length > 0;
-    $('board').classList.remove('hidden');
+    $('empty').hidden = b.length > 0 || note === 'Loading…';
+    $('boardNote').textContent = note;
   }
-  function saveScore() {
+  async function showBoard(me) {
+    $('board').classList.remove('hidden');
+    if (!ONLINE) return renderBoard(loadBoard(), me, 'Scores on this device');
+    renderBoard(remote || [], me, 'Loading…');
+    const b = await fetchRemote();
+    if (b) renderBoard(b, me, 'All players');
+    else renderBoard(loadBoard(), me, "Couldn't reach the leaderboard. Showing this device's scores.");
+  }
+  async function saveScore() {
     if (!pending) return;
+    const n = cleanName($('name').value) || 'AAA';
+    if (isRude(n)) { $('nameMsg').textContent = 'Please pick a different name.'; return; }
     pending = false;
-    const n = cleanName($('name').value) || 'AAA', t = Date.now(), b = loadBoard();
-    b.push({ n, s: score, b: burgers, t }); b.sort((x, y) => y.s - x.s || x.t - y.t);
+    const me = { n, s: score, b: burgers, t: Date.now() }, b = loadBoard();
+    b.push(me); b.sort((x, y) => y.s - x.s || x.t - y.t);
     store.set('stacks_board', JSON.stringify(b.slice(0, BOARD_MAX))); store.set('stacks_name', n);
     $('entry').hidden = true; $('name').blur();
-    showBoard(t);
+    if (ONLINE) {
+      try { await fetch(API, { method: 'POST', headers: Object.assign({ Prefer: 'return=minimal' }, HDRS), body: JSON.stringify({ name: n, score: me.s, burgers: me.b }) }); }
+      catch (e) {}
+    }
+    showBoard(me);
   }
+  fetchRemote();
 
   function rank(s) {
     return s < 150 ? 'Trainee' : s < 400 ? 'Fry Cook' : s < 800 ? 'Line Cook' : s < 1500 ? 'Grill Master' : s < 3000 ? 'Stack Captain' : 'Burger Legend';
@@ -473,7 +517,8 @@
     if (isBest) { best = score; store.set('stacks_best', best); }
     $('finalScore').textContent = score; $('fBurgers').textContent = burgers; $('fLayers').textContent = placed; $('fCombo').textContent = bestCombo;
     $('rank').textContent = rank(score); $('newBest').hidden = !isBest || score === 0;
-    const b = loadBoard();
+    const b = currentBoard();
+    $('nameMsg').textContent = '';
     pending = score > 0 && (b.length < BOARD_MAX || score > b[b.length - 1].s);
     $('entry').hidden = !pending;
     if (pending) {
@@ -621,6 +666,7 @@
   $('pause').onclick = () => togglePause();
   $('save').onclick = saveScore;
   $('boardBtn').onclick = $('boardBtn2').onclick = () => showBoard();
+  $('name').oninput = () => { $('nameMsg').textContent = ''; };
   $('boardClose').onclick = () => $('board').classList.add('hidden');
   $('boardPlay').onclick = start;
   $('fresh').onclick = () => { audio(); useFresh(); };
