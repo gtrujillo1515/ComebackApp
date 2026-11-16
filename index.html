@@ -34,6 +34,13 @@
           font-size: 20px; line-height: 1; cursor: pointer; box-shadow: 0 3px 0 var(--ink); padding: 0; }
   .ibtn:active { transform: translateY(3px); box-shadow: none; }
 
+  #fresh { position: absolute; left: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); height: 44px; padding: 0 14px;
+           border-radius: 22px; border: 3px solid var(--ink); background: var(--red); color: #fff; font: inherit; font-weight: 900;
+           font-size: 15px; cursor: pointer; box-shadow: 0 3px 0 var(--ink); display: none; align-items: center; gap: 6px; }
+  #fresh.show { display: flex; }
+  #fresh:active { transform: translateY(3px); box-shadow: none; }
+  #fresh:disabled { background: #bdbdbd; color: #555; cursor: default; }
+  #fresh.ready { animation: pulse .6s infinite alternate; }
   .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
              padding: 24px; text-align: center; background: rgba(0,0,0,.45); }
   .overlay.hidden { display: none; }
@@ -72,6 +79,7 @@
     <div class="pill"><small>BEST</small><span id="best">0</span></div>
   </div>
   <div id="combo"></div>
+  <button id="fresh" aria-label="Use Fresh Bun power-up">🍔 FRESH BUN ×<span id="freshN">1</span></button>
   <div id="btns">
     <button class="ibtn" id="pause" aria-label="Pause">⏸</button>
     <button class="ibtn" id="mute" aria-label="Sound">🔊</button>
@@ -85,6 +93,7 @@
         <li><i>👆</i><span>Tap to drop each ingredient onto the stack.</span></li>
         <li><i>✂️</i><span>Anything hanging over the edge gets sliced off.</span></li>
         <li><i>⭐</i><span>Perfect drops build combos and grow your stack back.</span></li>
+        <li><i>🔄</i><span>Stack too skinny? Hit <b>FRESH BUN</b> to restart on a full-width bun. Earn more every 3 burgers.</span></li>
         <li><i>🍔</i><span>Land the top bun to finish a burger for big bonus points!</span></li>
       </ul>
       <button class="play" id="start">PLAY</button>
@@ -270,7 +279,7 @@
 
   // ---------- state ----------
   let state = 'menu';             // menu | play | paused | dying | over
-  let layers, cur, debris, parts, pops, score, combo, bestCombo, burgers, placed, inBurger, stackH, cam, shake, tGlobal = 0, side = 1;
+  let layers, cur, debris, parts, pops, score, combo, bestCombo, burgers, placed, inBurger, stackH, fresh, cam, shake, tGlobal = 0, side = 1;
 
   function nextType() {
     if (inBurger === 0) return 'bunB';
@@ -291,7 +300,7 @@
 
   function reset() {
     layers = []; debris = []; parts = []; pops = [];
-    score = 0; combo = 0; bestCombo = 0; burgers = 0; placed = 0; inBurger = 0; stackH = 0; cam = 0; shake = 0;
+    score = 0; combo = 0; bestCombo = 0; burgers = 0; placed = 0; fresh = 1; inBurger = 0; stackH = 0; cam = 0; shake = 0;
     layers.push({ type: 'bunB', x: (VW - BASE_W) / 2, w: BASE_W, h: HEIGHT.bunB, base: 0, squash: 0 });
     stackH = HEIGHT.bunB; inBurger = 1;
     spawn(); hud();
@@ -306,6 +315,10 @@
 
   function hud() {
     $('score').textContent = score; $('burgers').textContent = burgers; $('best').textContent = Math.max(best, score);
+    const fb = $('fresh'), top = layers[layers.length - 1];
+    $('freshN').textContent = fresh || 0;
+    fb.disabled = !(state === 'play' && fresh > 0 && top && top.w < BASE_W);
+    fb.classList.toggle('ready', !fb.disabled && top.w < BASE_W * 0.4);
     const c = $('combo');
     if (combo >= 2) { c.textContent = 'PERFECT ×' + combo; c.classList.add('on'); } else c.classList.remove('on');
   }
@@ -328,7 +341,7 @@
 
     if (ov <= 4) {                                        // missed
       debris.push({ type: cur.type, x: cur.x, y: yTop - 14, w: cur.w, h: cur.h, vx: cur.dir * 60, vy: 0, rot: 0, vr: cur.dir * 2.5 });
-      cur = null; state = 'dying'; sfx.over(); buzz([40, 60, 120]);
+      cur = null; state = 'dying'; hud(); sfx.over(); buzz([40, 60, 120]);
       setTimeout(gameOver, 900);
       return;
     }
@@ -359,8 +372,24 @@
       sfx.burger(); buzz([20, 40, 20]);
       burst(x + w / 2, yTop, 40, ['#c62828', '#fff', '#222222', '#ffc72c']);
       pop('BURGER #' + burgers + '  +' + bonus, VW / 2, yTop - 40, '#fff', 28);
+      if (burgers % 3 === 0 && fresh < 3) { fresh++; pop('+1 FRESH BUN', VW / 2, yTop - 76, '#ffc72c', 22); }
     }
     score += gained; hud(); spawn();
+  }
+
+  // Power-up: abandon the current burger and start a new one on a full-width bun.
+  function useFresh() {
+    const top = layers[layers.length - 1];
+    if (state !== 'play' || fresh <= 0 || top.w >= BASE_W) return;
+    fresh--;
+    const x = Math.max(8, Math.min(VW - 8 - BASE_W, top.x + top.w / 2 - BASE_W / 2));
+    const yTop = baseY() - stackH - HEIGHT.bunB;
+    layers.push({ type: 'bunB', x, w: BASE_W, h: HEIGHT.bunB, base: stackH, squash: 1 });
+    stackH += HEIGHT.bunB; inBurger = 1; shake = 6;
+    sfx.burger(); buzz([20, 30, 20]);
+    burst(x + BASE_W / 2, yTop, 30, ['#c62828', '#fff', '#ffc72c']);
+    pop('FRESH BUN!', VW / 2, yTop - 30, '#fff', 28);
+    spawn(); hud();
   }
 
   function rank(s) {
@@ -377,12 +406,12 @@
   }
 
   function start() {
-    audio(); reset(); state = 'play';
+    audio(); state = 'play'; reset(); $('fresh').classList.add('show');
     $('menu').classList.add('hidden'); $('over').classList.add('hidden'); $('paused').classList.add('hidden');
   }
   function togglePause(force) {
-    if (state === 'play' && force !== false) { state = 'paused'; $('paused').classList.remove('hidden'); }
-    else if (state === 'paused' && force !== true) { state = 'play'; $('paused').classList.add('hidden'); last = performance.now(); }
+    if (state === 'play' && force !== false) { state = 'paused'; $('paused').classList.remove('hidden'); hud(); }
+    else if (state === 'paused' && force !== true) { state = 'play'; $('paused').classList.add('hidden'); last = performance.now(); hud(); }
   }
 
   // ---------- update ----------
@@ -507,9 +536,11 @@
       e.preventDefault(); if (e.repeat) return;
       if (state === 'play') drop(); else if (state === 'menu' || state === 'over') start(); else if (state === 'paused') togglePause();
     } else if (e.code === 'KeyP' || e.code === 'Escape') togglePause();
+    else if (e.code === 'KeyF') useFresh();
   });
   $('start').onclick = start; $('again').onclick = start; $('resume').onclick = () => togglePause(false);
   $('pause').onclick = () => togglePause();
+  $('fresh').onclick = () => { audio(); useFresh(); };
   const muteBtn = $('mute');
   const showMute = () => { muteBtn.textContent = muted ? '🔇' : '🔊'; };
   muteBtn.onclick = () => { muted = !muted; store.set('stacks_muted', muted ? '1' : '0'); showMute(); audio(); };
@@ -517,7 +548,7 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) togglePause(true); });
 
   // test hook: lets automated checks read state and line up drops
-  window.__stacks = { get s() { return { state, score, burgers, placed, combo, cur, top: layers[layers.length - 1] }; }, drop };
+  window.__stacks = { get s() { return { state, score, burgers, placed, combo, cur, fresh, top: layers[layers.length - 1] }; }, drop, useFresh };
 
   $('best').textContent = best;
   demoStack();
