@@ -1,0 +1,11 @@
+{
+  "appId": "com.gtrujillo.comeback",
+  "appName": "Comeback",
+  "webDir": "www",
+  "backgroundColor": "#0b1f25",
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#0b1f25",
+    "scrollEnabled": false
+  }
+}
