@@ -165,8 +165,8 @@
 
   // ---------- ingredients ----------
   const H = 24, BASE_W = 200, PERFECT = 7;
-  const FILLINGS = ['cheese', 'lettuce', 'tomato', 'onion', 'bacon', 'pickle', 'patty'];
-  const HEIGHT = { bunB: 26, bunT: 44, patty: 26, cheese: 14, lettuce: 16, tomato: 18, onion: 14, bacon: 14, pickle: 14 };
+  const FILLINGS = ['cheese', 'lettuce', 'tomato', 'onion', 'bacon', 'pickle', 'patty', 'egg'];
+  const HEIGHT = { bunB: 26, bunT: 44, patty: 26, cheese: 14, lettuce: 16, tomato: 18, onion: 14, bacon: 14, pickle: 14, egg: 18 };
 
   function rr(x, y, w, h, r) {
     r = Math.max(0, Math.min(r, w / 2, h / 2));
@@ -228,10 +228,27 @@
         rr(x, y, w, h, 8); fillStroke('#e23b2e');
         ctx.fillStyle = 'rgba(255,255,255,.3)'; rr(x + 5, y + 3, Math.max(0, w - 10), 4, 2); ctx.fill();
         break;
-      case 'onion':
-        rr(x, y, w, h, 7); fillStroke('#f4e9f7');
-        ctx.strokeStyle = '#a45bb5'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 6, y + h / 2); ctx.lineTo(x + w - 6, y + h / 2); if (w > 12) ctx.stroke();
+      case 'onion': {                                     // white onion rings, seen from the side
+        const n = Math.max(1, Math.round(w / 26)), seg = w / n;
+        for (let i = 0; i < n; i++) {
+          const cx = x + (i + .5) * seg, cy = y + h / 2, rx = seg / 2 + 1.5, ry = h / 2;
+          ctx.beginPath(); ctx.ellipse(cx, cy, rx, ry, 0, 0, 7); fillStroke('#fbf7ea');
+          if (rx > 7) { ctx.beginPath(); ctx.ellipse(cx, cy, rx - 5, Math.max(1, ry - 4.5), 0, 0, 7); ctx.fillStyle = '#d9d2b8'; ctx.fill(); ctx.lineWidth = 1.5; ctx.strokeStyle = '#0a0a0a'; ctx.stroke(); }
+        }
         break;
+      }
+      case 'egg': {                                       // fried egg: wobbly white with a yolk
+        const yr = Math.min(w * 0.24, 20), cx = x + w / 2;
+        ctx.beginPath(); ctx.moveTo(x - 3, y + 2); ctx.lineTo(x + w + 3, y + 2);
+        const n = Math.max(2, Math.round(w / 30)), seg = (w + 6) / n;
+        for (let i = n; i > 0; i--) { const x1 = x - 3 + i * seg; ctx.quadraticCurveTo(x1 - seg / 2, y + h + (i % 2 ? 6 : 1), x1 - seg, y + h * 0.75); }
+        ctx.closePath(); fillStroke('#fffdf5');
+        if (w > 16) {
+          ctx.beginPath(); ctx.ellipse(cx, y + h * 0.42, yr, h * 0.36, 0, 0, 7); fillStroke('#ffb81c');
+          ctx.fillStyle = 'rgba(255,255,255,.75)'; ctx.beginPath(); ctx.ellipse(cx - yr * 0.4, y + h * 0.3, yr * 0.25, 1.8, -0.2, 0, 7); ctx.fill();
+        }
+        break;
+      }
       case 'bacon': {
         ctx.beginPath(); const n = Math.max(2, Math.round(w / 20)), seg = w / n;
         ctx.moveTo(x, y + h / 2);
@@ -282,7 +299,7 @@
 
   function demoStack() {
     layers = []; debris = []; parts = []; pops = []; cur = null; stackH = 0; cam = 0; shake = 0;
-    ['bunB', 'patty', 'cheese', 'lettuce', 'tomato', 'bacon', 'patty', 'cheese', 'pickle', 'bunT'].forEach(type => {
+    ['bunB', 'patty', 'cheese', 'egg', 'bacon', 'onion', 'tomato', 'lettuce', 'bunT'].forEach(type => {
       layers.push({ type, x: (VW - 170) / 2, w: 170, h: HEIGHT[type], base: stackH, squash: 0 }); stackH += HEIGHT[type];
     });
   }
