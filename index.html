@@ -568,6 +568,68 @@
     return [SKY[4][1], SKY[4][2]];
   }
 
+  // Distant Tacoma skyline: Mount Rainier, the Narrows Bridge, downtown, the Museum of Glass cone and the Tacoma Dome.
+  // Each layer scrolls slower than the stack so it sinks away as the burger climbs.
+  const TOWERS = [[128, 16, 44], [146, 20, 70], [168, 14, 52], [184, 22, 98], [208, 16, 60], [226, 20, 80], [248, 14, 40]];
+  function drawSkyline(night) {
+    const hz = baseY() + 12, rgb = c => `rgb(${c})`;
+    ctx.save(); ctx.lineJoin = 'round';
+
+    // Mount Rainier
+    let y = hz + cam * 0.1;
+    ctx.fillStyle = rgb(mix([176, 198, 226], [44, 48, 96], night));
+    ctx.beginPath(); ctx.moveTo(110, y); ctx.lineTo(185, y - 62); ctx.lineTo(228, y - 128); ctx.lineTo(246, y - 150); ctx.lineTo(262, y - 146);
+    ctx.lineTo(276, y - 153); ctx.lineTo(292, y - 134); ctx.lineTo(335, y - 78); ctx.lineTo(VW, y - 34); ctx.lineTo(VW, y); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = rgb(mix([255, 255, 255], [150, 156, 200], night));
+    ctx.beginPath(); ctx.moveTo(228, y - 128); ctx.lineTo(246, y - 150); ctx.lineTo(262, y - 146); ctx.lineTo(276, y - 153); ctx.lineTo(292, y - 134);
+    ctx.lineTo(310, y - 110); ctx.lineTo(294, y - 118); ctx.lineTo(282, y - 100); ctx.lineTo(266, y - 120); ctx.lineTo(252, y - 102);
+    ctx.lineTo(238, y - 118); ctx.lineTo(214, y - 106); ctx.closePath(); ctx.fill();
+
+    // evergreen foothills
+    y = hz + cam * 0.18;
+    ctx.fillStyle = rgb(mix([96, 140, 128], [22, 34, 52], night));
+    ctx.beginPath(); ctx.moveTo(0, y);
+    for (let i = 0; i <= 8; i++) ctx.quadraticCurveTo(i * 50 - 25, y - 34 - (i % 3) * 9, i * 50, y - 20 - (i % 2) * 6);
+    ctx.lineTo(VW, y); ctx.closePath(); ctx.fill();
+
+    // city silhouette
+    y = hz + cam * 0.28;
+    const city = rgb(mix([84, 102, 138], [16, 18, 40], night));
+    ctx.fillStyle = city; ctx.strokeStyle = city;
+    // Tacoma Narrows Bridge
+    const deck = y - 24;
+    ctx.fillRect(0, deck, 124, 3); ctx.fillRect(26, y - 80, 5, 80); ctx.fillRect(90, y - 80, 5, 80);
+    ctx.fillRect(24, y - 62, 9, 2); ctx.fillRect(88, y - 62, 9, 2);
+    ctx.lineWidth = 1.6; ctx.beginPath();
+    ctx.moveTo(0, deck - 8); ctx.quadraticCurveTo(16, deck - 16, 28, y - 80);
+    ctx.quadraticCurveTo(60, deck + 12, 92, y - 80); ctx.quadraticCurveTo(106, deck - 16, 124, deck); ctx.stroke();
+    ctx.lineWidth = 0.8; ctx.beginPath();
+    for (let x = 36; x < 90; x += 8) { const t = (x - 28) / 64, cy = (1 - t) * (1 - t) * (y - 80) + 2 * t * (1 - t) * (deck + 12) + t * t * (y - 80); ctx.moveTo(x, cy); ctx.lineTo(x, deck); }
+    ctx.stroke();
+    // downtown towers
+    for (const [x, w, h] of TOWERS) ctx.fillRect(x, y - h, w, h);
+    ctx.fillRect(194, y - 116, 2, 20); ctx.fillRect(189, y - 104, 12, 6);
+    // Museum of Glass cone
+    ctx.beginPath(); ctx.moveTo(262, y); ctx.lineTo(288, y); ctx.lineTo(287, y - 44); ctx.lineTo(276, y - 50); ctx.closePath(); ctx.fill();
+    // Tacoma Dome
+    ctx.fillRect(292, y - 12, 104, 12);
+    ctx.beginPath(); ctx.ellipse(344, y - 12, 52, 36, 0, Math.PI, 0); ctx.fill();
+    ctx.fillRect(343, y - 60, 1.6, 14); ctx.beginPath(); ctx.moveTo(345, y - 60); ctx.lineTo(354, y - 57); ctx.lineTo(345, y - 54); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,.16)'; ctx.lineWidth = 1;
+    for (const r of [14, 30, 44]) { ctx.beginPath(); ctx.ellipse(344, y - 12, r, 36, 0, Math.PI, 0); ctx.stroke(); }
+    // lights come on at night
+    if (night > 0) {
+      ctx.fillStyle = `rgba(255,214,120,${night * 0.9})`;
+      for (const [x, w, h] of TOWERS) for (let r = 0; r * 9 + 8 < h; r++) for (let c = 0; c * 5 + 3 < w - 2; c++) if ((x + r * 7 + c * 3) % 5 < 3) ctx.fillRect(x + 3 + c * 5, y - h + 5 + r * 9, 2, 3);
+      for (let x = 6; x < 124; x += 12) ctx.fillRect(x, deck - 1, 2, 2);
+      ctx.fillRect(27, y - 83, 3, 3); ctx.fillRect(91, y - 83, 3, 3);
+    }
+    // Commencement Bay
+    ctx.fillStyle = rgb(mix([120, 170, 210], [14, 20, 48], night));
+    ctx.fillRect(0, y, VW, VH);
+    ctx.restore();
+  }
+
   function render() {
     ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
     const n = state === 'menu' ? 0 : (placed || 0);
@@ -592,6 +654,8 @@
       const cx = ((i * 173 + tGlobal * (8 + i * 3)) % (VW + 200)) - 100, cy = ((i * 211 + cam * 0.25) % (VH + 100)) - 50;
       ctx.beginPath(); ctx.ellipse(cx, cy, 44, 15, 0, 0, 7); ctx.ellipse(cx + 26, cy - 9, 26, 14, 0, 0, 7); ctx.ellipse(cx - 24, cy - 6, 22, 11, 0, 0, 7); ctx.fill();
     }
+
+    drawSkyline(Math.max(0, Math.min(1, (n - 30) / 35)));
 
     ctx.save();
     ctx.translate((Math.random() - .5) * shake, cam + (Math.random() - .5) * shake);
