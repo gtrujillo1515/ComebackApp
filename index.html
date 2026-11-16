@@ -439,7 +439,7 @@
   // Shared leaderboard: paste your Supabase Project URL and publishable (anon) key here.
   // Leave both empty to keep scores on this device only. Never put a secret / service_role key here.
   const SUPABASE_URL = 'https://lybrtzvzanuqhazmurez.supabase.co';
-  const SUPABASE_KEY = '';
+  const SUPABASE_KEY = 'sb_publishable_QBzMagUyJATpE3YsjCQNJw_55_lUWXs';
   const ONLINE = !!(SUPABASE_URL && SUPABASE_KEY);
   const API = SUPABASE_URL.replace(/\/+$/, '') + '/rest/v1/scores';
   const HDRS = { apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SUPABASE_KEY, 'Content-Type': 'application/json' };
