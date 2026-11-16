@@ -66,6 +66,28 @@
   .play { margin-top: 14px; width: 100%; font: inherit; font-weight: 900; font-size: 24px; color: #fff; cursor: pointer;
           background: var(--red); border: 4px solid var(--ink); border-radius: 18px; padding: 12px; box-shadow: 0 6px 0 var(--ink); }
   .play:active { transform: translateY(6px); box-shadow: none; }
+  .card { max-height: 100%; overflow-y: auto; }
+  .ghost { margin-top: 12px; width: 100%; font: inherit; font-weight: 900; font-size: 16px; color: var(--ink); cursor: pointer;
+           background: #fff; border: 3px solid var(--ink); border-radius: 14px; padding: 9px; box-shadow: 0 4px 0 var(--ink); }
+  .ghost:active { transform: translateY(4px); box-shadow: none; }
+  #entry { margin-top: 12px; padding: 12px; border: 3px dashed var(--red); border-radius: 16px; }
+  #entry p { margin: 0 0 8px; }
+  #entry .row { display: flex; gap: 8px; }
+  #name { flex: 1; min-width: 0; font: inherit; font-weight: 900; font-size: 20px; text-align: center; text-transform: uppercase;
+          letter-spacing: .08em; border: 3px solid var(--ink); border-radius: 12px; padding: 8px; color: var(--ink); background: #fff;
+          user-select: text; -webkit-user-select: text; }
+  #name:focus { outline: 3px solid var(--red); outline-offset: 1px; }
+  #save { font: inherit; font-weight: 900; font-size: 18px; color: #fff; background: var(--red); border: 3px solid var(--ink);
+          border-radius: 12px; padding: 0 16px; cursor: pointer; box-shadow: 0 4px 0 var(--ink); }
+  #save:active { transform: translateY(4px); box-shadow: none; }
+  #board { z-index: 5; }
+  #list { list-style: none; margin: 10px 0 0; padding: 0; font-weight: 900; font-variant-numeric: tabular-nums; }
+  #list li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; font-size: 17px; }
+  #list li:nth-child(odd) { background: #f5f5f5; }
+  #list li.me { background: var(--red); color: #fff; }
+  #list .pos { width: 26px; text-align: right; opacity: .6; }
+  #list .nm { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #list .bg { font-size: 12px; opacity: .7; }
   .hint { font-size: 12px; opacity: .65; margin-top: 12px; }
 </style>
 </head>
@@ -97,6 +119,7 @@
         <li><i>🍔</i><span>Land the top bun to finish a burger for big bonus points!</span></li>
       </ul>
       <button class="play" id="start">PLAY</button>
+      <button class="ghost" id="boardBtn">🏆 HIGH SCORES</button>
       <div class="hint">Tap, click or press Space</div>
     </div>
   </div>
@@ -113,7 +136,25 @@
         <div><small>LAYERS</small><span id="fLayers">0</span></div>
         <div><small>BEST COMBO</small><span id="fCombo">0</span></div>
       </div>
+      <div id="entry" hidden>
+        <p>🏆 You made the top 10! Enter your name or initials:</p>
+        <div class="row">
+          <input id="name" type="text" maxlength="10" placeholder="AAA" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Name or initials">
+          <button id="save">SAVE</button>
+        </div>
+      </div>
       <button class="play" id="again">PLAY AGAIN</button>
+      <button class="ghost" id="boardBtn2">🏆 HIGH SCORES</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="board">
+    <div class="card">
+      <h2>🏆 High Scores</h2>
+      <ol id="list"></ol>
+      <p id="empty" hidden>No scores yet. Be the first!</p>
+      <button class="play" id="boardPlay">PLAY</button>
+      <button class="ghost" id="boardClose">BACK</button>
     </div>
   </div>
 
@@ -392,6 +433,36 @@
     spawn(); hud();
   }
 
+  // ---------- leaderboard (saved on this device) ----------
+  const BOARD_MAX = 10;
+  let pending = false;
+  function loadBoard() {
+    try { const b = JSON.parse(store.get('stacks_board', '[]')); return Array.isArray(b) ? b.filter(e => e && typeof e.s === 'number') : []; }
+    catch (e) { return []; }
+  }
+  const cleanName = v => (v || '').toUpperCase().replace(/[^A-Z0-9 .'&-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10);
+  function showBoard(meId) {
+    const list = $('list'), b = loadBoard(); list.textContent = '';
+    b.forEach((e, i) => {
+      const li = document.createElement('li'); if (e.t === meId) li.className = 'me';
+      [['pos', (i + 1) + '.'], ['nm', e.n], ['bg', '🍔' + (e.b || 0)], ['sc', e.s]].forEach(([c, t]) => {
+        const sp = document.createElement('span'); sp.className = c; sp.textContent = t; li.appendChild(sp);
+      });
+      list.appendChild(li);
+    });
+    $('empty').hidden = b.length > 0;
+    $('board').classList.remove('hidden');
+  }
+  function saveScore() {
+    if (!pending) return;
+    pending = false;
+    const n = cleanName($('name').value) || 'AAA', t = Date.now(), b = loadBoard();
+    b.push({ n, s: score, b: burgers, t }); b.sort((x, y) => y.s - x.s || x.t - y.t);
+    store.set('stacks_board', JSON.stringify(b.slice(0, BOARD_MAX))); store.set('stacks_name', n);
+    $('entry').hidden = true; $('name').blur();
+    showBoard(t);
+  }
+
   function rank(s) {
     return s < 150 ? 'Trainee' : s < 400 ? 'Fry Cook' : s < 800 ? 'Line Cook' : s < 1500 ? 'Grill Master' : s < 3000 ? 'Stack Captain' : 'Burger Legend';
   }
@@ -402,12 +473,19 @@
     if (isBest) { best = score; store.set('stacks_best', best); }
     $('finalScore').textContent = score; $('fBurgers').textContent = burgers; $('fLayers').textContent = placed; $('fCombo').textContent = bestCombo;
     $('rank').textContent = rank(score); $('newBest').hidden = !isBest || score === 0;
+    const b = loadBoard();
+    pending = score > 0 && (b.length < BOARD_MAX || score > b[b.length - 1].s);
+    $('entry').hidden = !pending;
+    if (pending) {
+      $('name').value = store.get('stacks_name', '');
+      if (matchMedia('(pointer: fine)').matches) setTimeout(() => { $('name').focus(); $('name').select(); }, 350);
+    }
     $('over').classList.remove('hidden'); hud();
   }
 
   function start() {
     audio(); state = 'play'; reset(); $('fresh').classList.add('show');
-    $('menu').classList.add('hidden'); $('over').classList.add('hidden'); $('paused').classList.add('hidden');
+    $('menu').classList.add('hidden'); $('over').classList.add('hidden'); $('paused').classList.add('hidden'); $('board').classList.add('hidden'); pending = false;
   }
   function togglePause(force) {
     if (state === 'play' && force !== false) { state = 'paused'; $('paused').classList.remove('hidden'); hud(); }
@@ -532,6 +610,7 @@
   // ---------- input ----------
   cv.addEventListener('pointerdown', e => { e.preventDefault(); audio(); drop(); });
   addEventListener('keydown', e => {
+    if (e.target && e.target.tagName === 'INPUT') { if (e.code === 'Enter' || e.code === 'NumpadEnter') saveScore(); return; }
     if (e.code === 'Space' || e.code === 'Enter' || e.code === 'ArrowDown') {
       e.preventDefault(); if (e.repeat) return;
       if (state === 'play') drop(); else if (state === 'menu' || state === 'over') start(); else if (state === 'paused') togglePause();
@@ -540,6 +619,10 @@
   });
   $('start').onclick = start; $('again').onclick = start; $('resume').onclick = () => togglePause(false);
   $('pause').onclick = () => togglePause();
+  $('save').onclick = saveScore;
+  $('boardBtn').onclick = $('boardBtn2').onclick = () => showBoard();
+  $('boardClose').onclick = () => $('board').classList.add('hidden');
+  $('boardPlay').onclick = start;
   $('fresh').onclick = () => { audio(); useFresh(); };
   const muteBtn = $('mute');
   const showMute = () => { muteBtn.textContent = muted ? '🔇' : '🔊'; };
