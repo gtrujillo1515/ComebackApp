@@ -1,0 +1,513 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#c8102e">
+<title>Stack It Up! — Stacks Burgers</title>
+<style>
+  :root {
+    --red: #c8102e; --red-dark: #8e0b20; --yellow: #ffc72c; --cream: #fff6e0; --ink: #2b1608;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #1c0f08; overflow: hidden; overscroll-behavior: none; }
+  body {
+    font-family: "Arial Rounded MT Bold", "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    color: var(--ink); display: flex; justify-content: center;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  #wrap { position: relative; width: 100%; max-width: 520px; height: 100%; overflow: hidden; background: #7ec8f2; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  #hud { position: absolute; top: 0; left: 0; right: 0; padding: calc(10px + env(safe-area-inset-top)) 14px 0;
+         display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
+  .pill { background: rgba(255,246,224,.92); border: 3px solid var(--ink); border-radius: 14px; padding: 4px 12px;
+          font-weight: 900; box-shadow: 0 3px 0 var(--ink); text-align: center; min-width: 74px; }
+  .pill small { display: block; font-size: 10px; letter-spacing: .12em; opacity: .7; }
+  .pill span { font-size: 24px; line-height: 1.05; font-variant-numeric: tabular-nums; }
+  #combo { position: absolute; top: calc(78px + env(safe-area-inset-top)); left: 0; right: 0; text-align: center;
+           font-weight: 900; font-size: 20px; color: #fff; text-shadow: 0 2px 0 var(--ink), 0 0 8px rgba(0,0,0,.35);
+           pointer-events: none; opacity: 0; transition: opacity .2s; }
+  #combo.on { opacity: 1; }
+  #btns { position: absolute; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); display: flex; gap: 8px; }
+  .ibtn { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--ink); background: var(--cream);
+          font-size: 20px; line-height: 1; cursor: pointer; box-shadow: 0 3px 0 var(--ink); padding: 0; }
+  .ibtn:active { transform: translateY(3px); box-shadow: none; }
+
+  .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+             padding: 24px; text-align: center; background: rgba(43,22,8,.35); }
+  .overlay.hidden { display: none; }
+  .card { background: var(--cream); border: 4px solid var(--ink); border-radius: 26px; padding: 22px 22px 24px;
+          width: 100%; max-width: 340px; box-shadow: 0 8px 0 var(--ink); animation: pop .35s cubic-bezier(.2,1.6,.4,1); }
+  @keyframes pop { from { transform: scale(.7); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  .brand { display: inline-block; background: var(--red); color: #fff; font-weight: 900; letter-spacing: .14em;
+           font-size: 15px; padding: 6px 14px; border-radius: 999px; border: 3px solid var(--ink); }
+  .brand b { color: var(--yellow); }
+  h1 { margin: 12px 0 4px; font-size: 44px; line-height: .95; color: var(--red); font-weight: 900;
+       text-shadow: 3px 3px 0 var(--yellow); letter-spacing: -.01em; }
+  h2 { margin: 12px 0 2px; font-size: 32px; color: var(--red); font-weight: 900; }
+  p { margin: 8px 0; font-size: 15px; line-height: 1.35; font-weight: 700; }
+  .how { text-align: left; margin: 12px auto 4px; padding: 0; list-style: none; font-size: 14px; font-weight: 700; }
+  .how li { margin: 6px 0; display: flex; gap: 8px; align-items: flex-start; }
+  .how i { font-style: normal; width: 22px; flex: none; text-align: center; }
+  .big { font-size: 60px; font-weight: 900; line-height: 1; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .rank { display: inline-block; margin-top: 6px; background: var(--yellow); border: 3px solid var(--ink);
+          border-radius: 999px; padding: 4px 14px; font-weight: 900; font-size: 15px; }
+  .stats { display: flex; justify-content: space-around; margin: 14px 0 4px; font-weight: 900; }
+  .stats div small { display: block; font-size: 10px; letter-spacing: .1em; opacity: .65; }
+  .stats div span { font-size: 22px; }
+  .newbest { color: var(--red); font-weight: 900; font-size: 16px; animation: pulse .7s infinite alternate; }
+  @keyframes pulse { to { transform: scale(1.1); } }
+  .play { margin-top: 14px; width: 100%; font: inherit; font-weight: 900; font-size: 24px; color: #fff; cursor: pointer;
+          background: var(--red); border: 4px solid var(--ink); border-radius: 18px; padding: 12px; box-shadow: 0 6px 0 var(--ink); }
+  .play:active { transform: translateY(6px); box-shadow: none; }
+  .hint { font-size: 12px; opacity: .65; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+
+  <div id="hud">
+    <div class="pill"><small>SCORE</small><span id="score">0</span></div>
+    <div class="pill"><small>BURGERS</small><span id="burgers">0</span></div>
+    <div class="pill"><small>BEST</small><span id="best">0</span></div>
+  </div>
+  <div id="combo"></div>
+  <div id="btns">
+    <button class="ibtn" id="pause" aria-label="Pause">⏸</button>
+    <button class="ibtn" id="mute" aria-label="Sound">🔊</button>
+  </div>
+
+  <div class="overlay" id="menu">
+    <div class="card">
+      <div class="brand">STACKS <b>BURGERS</b></div>
+      <h1>STACK<br>IT UP!</h1>
+      <ul class="how">
+        <li><i>👆</i><span>Tap to drop each ingredient onto the stack.</span></li>
+        <li><i>✂️</i><span>Anything hanging over the edge gets sliced off.</span></li>
+        <li><i>⭐</i><span>Perfect drops build combos and grow your stack back.</span></li>
+        <li><i>🍔</i><span>Land the top bun to finish a burger for big bonus points!</span></li>
+      </ul>
+      <button class="play" id="start">PLAY</button>
+      <div class="hint">Tap, click or press Space</div>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="over">
+    <div class="card">
+      <div class="brand">STACKS <b>BURGERS</b></div>
+      <h2>Order's Up!</h2>
+      <div class="big" id="finalScore">0</div>
+      <div class="newbest" id="newBest" hidden>★ NEW BEST! ★</div>
+      <div class="rank" id="rank">Trainee</div>
+      <div class="stats">
+        <div><small>BURGERS</small><span id="fBurgers">0</span></div>
+        <div><small>LAYERS</small><span id="fLayers">0</span></div>
+        <div><small>BEST COMBO</small><span id="fCombo">0</span></div>
+      </div>
+      <button class="play" id="again">PLAY AGAIN</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="paused">
+    <div class="card">
+      <h2>Paused</h2>
+      <p>Your burger is staying warm.</p>
+      <button class="play" id="resume">RESUME</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const wrap = $('wrap'), cv = $('cv'), ctx = cv.getContext('2d');
+
+  // ---------- layout ----------
+  const VW = 400;                 // world width; height follows the screen
+  let VH = 700, scale = 1, dpr = 1;
+  function resize() {
+    const r = wrap.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+    cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+    scale = r.width / VW; VH = r.height / scale;
+  }
+  addEventListener('resize', resize); resize();
+
+  // ---------- storage ----------
+  const store = {
+    get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : v; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+  };
+  let best = +store.get('stacks_best', 0) || 0;
+  let muted = store.get('stacks_muted', '0') === '1';
+
+  // ---------- sound ----------
+  let ac = null;
+  function audio() {
+    if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
+    if (ac && ac.state === 'suspended') ac.resume();
+  }
+  function beep(f, d = 0.09, type = 'triangle', v = 0.16, delay = 0) {
+    if (muted || !ac) return;
+    const t = ac.currentTime + delay, o = ac.createOscillator(), g = ac.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t);
+    g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(0.001, t + d);
+    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + d + 0.02);
+  }
+  const sfx = {
+    drop() { beep(220, 0.08, 'sine', 0.2); },
+    perfect(c) { const f = 440 * Math.pow(2, Math.min(c, 12) / 12); beep(f, 0.12); beep(f * 1.5, 0.16, 'triangle', 0.1, 0.06); },
+    burger() { [523, 659, 784, 1047].forEach((f, i) => beep(f, 0.16, 'triangle', 0.15, i * 0.08)); },
+    over() { [392, 311, 262, 196].forEach((f, i) => beep(f, 0.22, 'sawtooth', 0.08, i * 0.13)); }
+  };
+  const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+
+  // ---------- ingredients ----------
+  const H = 24, BASE_W = 200, PERFECT = 7;
+  const FILLINGS = ['cheese', 'lettuce', 'tomato', 'onion', 'bacon', 'pickle', 'patty'];
+  const HEIGHT = { bunB: 26, bunT: 44, patty: 26, cheese: 14, lettuce: 16, tomato: 18, onion: 14, bacon: 14, pickle: 14 };
+
+  function rr(x, y, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    ctx.beginPath();
+    ctx.moveTo(x + r, y); ctx.lineTo(x + w - r, y); ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r); ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r); ctx.quadraticCurveTo(x, y, x + r, y); ctx.closePath();
+  }
+  function fillStroke(fill) { ctx.fillStyle = fill; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#2b1608'; ctx.stroke(); }
+
+  function drawIng(type, x, y, w, h) {
+    ctx.save(); ctx.lineJoin = 'round';
+    switch (type) {
+      case 'bunB':
+        rr(x, y, w, h, 9); fillStroke('#e8a550');
+        ctx.fillStyle = 'rgba(255,255,255,.28)'; rr(x + 5, y + 4, Math.max(0, w - 10), 5, 3); ctx.fill();
+        break;
+      case 'bunT': {
+        const r = Math.min(h * 0.95, w / 2);
+        ctx.beginPath(); ctx.moveTo(x, y + h); ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y); ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r); ctx.lineTo(x + w, y + h); ctx.closePath();
+        fillStroke('#e8a550');
+        ctx.save(); ctx.clip();
+        ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.beginPath(); ctx.ellipse(x + w * 0.35, y + h * 0.3, w * 0.28, h * 0.16, -0.15, 0, 7); ctx.fill();
+        ctx.fillStyle = '#fff3d1';
+        for (let i = 0, n = Math.floor(w / 22); i < n; i++) {
+          const sx = x + 14 + i * 22 + (i % 2) * 5, sy = y + 10 + ((i * 7) % 3) * 8;
+          ctx.beginPath(); ctx.ellipse(sx, sy, 4, 2, (i % 3 - 1) * 0.5, 0, 7); ctx.fill();
+        }
+        ctx.restore();
+        break;
+      }
+      case 'patty':
+        rr(x, y, w, h, 10); fillStroke('#6b3415');
+        ctx.fillStyle = 'rgba(0,0,0,.22)';
+        for (let i = 0, n = Math.floor(w / 16); i < n; i++) { ctx.beginPath(); ctx.arc(x + 10 + i * 16, y + 8 + (i % 2) * 9, 2, 0, 7); ctx.fill(); }
+        break;
+      case 'cheese': {
+        ctx.beginPath(); ctx.moveTo(x - 2, y); ctx.lineTo(x + w + 2, y); ctx.lineTo(x + w + 2, y + h * 0.55);
+        const n = Math.max(1, Math.floor(w / 34)), seg = (w + 4) / n;
+        for (let i = n; i > 0; i--) {
+          const x1 = x - 2 + i * seg, x0 = x1 - seg;
+          ctx.lineTo(x1 - seg * 0.25, y + h * 0.55); ctx.lineTo(x0 + seg * 0.5, y + h + 5); ctx.lineTo(x0 + seg * 0.25, y + h * 0.55);
+        }
+        ctx.lineTo(x - 2, y + h * 0.55); ctx.closePath(); fillStroke('#ffc72c');
+        break;
+      }
+      case 'lettuce': {
+        ctx.beginPath(); ctx.moveTo(x - 4, y + 2);
+        const n = Math.max(2, Math.round(w / 18)), seg = (w + 8) / n;
+        ctx.lineTo(x + w + 4, y + 2);
+        for (let i = n; i > 0; i--) { const x1 = x - 4 + i * seg; ctx.quadraticCurveTo(x1 - seg / 2, y + h + 8, x1 - seg, y + h * 0.6); }
+        ctx.closePath(); fillStroke('#6cc24a');
+        break;
+      }
+      case 'tomato':
+        rr(x, y, w, h, 8); fillStroke('#e23b2e');
+        ctx.fillStyle = 'rgba(255,255,255,.3)'; rr(x + 5, y + 3, Math.max(0, w - 10), 4, 2); ctx.fill();
+        break;
+      case 'onion':
+        rr(x, y, w, h, 7); fillStroke('#f4e9f7');
+        ctx.strokeStyle = '#a45bb5'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x + 6, y + h / 2); ctx.lineTo(x + w - 6, y + h / 2); if (w > 12) ctx.stroke();
+        break;
+      case 'bacon': {
+        ctx.beginPath(); const n = Math.max(2, Math.round(w / 20)), seg = w / n;
+        ctx.moveTo(x, y + h / 2);
+        for (let i = 0; i < n; i++) ctx.quadraticCurveTo(x + (i + .5) * seg, y + (i % 2 ? h : 0) - 2, x + (i + 1) * seg, y + h / 2);
+        ctx.lineTo(x + w, y + h);
+        for (let i = n; i > 0; i--) ctx.quadraticCurveTo(x + (i - .5) * seg, y + h / 2 + ((i - 1) % 2 ? h : 0) - 2, x + (i - 1) * seg, y + h);
+        ctx.closePath(); fillStroke('#b5342a');
+        ctx.save(); ctx.clip(); ctx.fillStyle = '#f2b8a0'; ctx.fillRect(x, y + h * 0.62, w, 3); ctx.restore();
+        break;
+      }
+      case 'pickle':
+        rr(x, y, w, h, 7); fillStroke('#8fb83a');
+        ctx.fillStyle = '#5e8a1f';
+        for (let i = 0, n = Math.floor(w / 14); i < n; i++) { ctx.beginPath(); ctx.arc(x + 9 + i * 14, y + h / 2, 2, 0, 7); ctx.fill(); }
+        break;
+    }
+    ctx.restore();
+  }
+
+  // ---------- state ----------
+  let state = 'menu';             // menu | play | paused | dying | over
+  let layers, cur, debris, parts, pops, score, combo, bestCombo, burgers, placed, inBurger, stackH, cam, shake, tGlobal = 0, side = 1;
+
+  function nextType() {
+    if (inBurger === 0) return 'bunB';
+    if (inBurger === 1) return 'patty';
+    if (inBurger >= 6) return 'bunT';
+    const last = layers[layers.length - 1].type;
+    let t; do { t = FILLINGS[Math.random() * FILLINGS.length | 0]; } while (t === last);
+    return t;
+  }
+  const baseY = () => VH - 86;    // screen y of stack bottom when cam = 0
+  const speed = () => Math.min(150 + placed * 6.5, 460);
+
+  function spawn() {
+    const top = layers[layers.length - 1], type = nextType();
+    side = -side;
+    cur = { type, w: top.w, h: HEIGHT[type], x: side > 0 ? 10 : VW - 10 - top.w, dir: side, squash: 0 };
+  }
+
+  function reset() {
+    layers = []; debris = []; parts = []; pops = [];
+    score = 0; combo = 0; bestCombo = 0; burgers = 0; placed = 0; inBurger = 0; stackH = 0; cam = 0; shake = 0;
+    layers.push({ type: 'bunB', x: (VW - BASE_W) / 2, w: BASE_W, h: HEIGHT.bunB, base: 0, squash: 0 });
+    stackH = HEIGHT.bunB; inBurger = 1;
+    spawn(); hud();
+  }
+
+  function demoStack() {
+    layers = []; debris = []; parts = []; pops = []; cur = null; stackH = 0; cam = 0; shake = 0;
+    ['bunB', 'patty', 'cheese', 'lettuce', 'tomato', 'bacon', 'patty', 'cheese', 'pickle', 'bunT'].forEach(type => {
+      layers.push({ type, x: (VW - 170) / 2, w: 170, h: HEIGHT[type], base: stackH, squash: 0 }); stackH += HEIGHT[type];
+    });
+  }
+
+  function hud() {
+    $('score').textContent = score; $('burgers').textContent = burgers; $('best').textContent = Math.max(best, score);
+    const c = $('combo');
+    if (combo >= 2) { c.textContent = 'PERFECT ×' + combo; c.classList.add('on'); } else c.classList.remove('on');
+  }
+
+  function pop(text, x, y, color = '#fff', size = 22) { pops.push({ text, x, y, color, size, t: 0 }); }
+  function burst(x, y, n, colors) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, s = 60 + Math.random() * 220;
+      parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 120, t: 0, life: 0.6 + Math.random() * 0.6,
+                   c: colors[i % colors.length], r: 2 + Math.random() * 4 });
+    }
+  }
+
+  function drop() {
+    if (state !== 'play' || !cur) return;
+    const top = layers[layers.length - 1];
+    const yTop = baseY() - stackH - cur.h;               // world-y (cam-less) of the new layer's top
+    const off = cur.x - top.x;
+    const left = Math.max(cur.x, top.x), right = Math.min(cur.x + cur.w, top.x + top.w), ov = right - left;
+
+    if (ov <= 4) {                                        // missed
+      debris.push({ type: cur.type, x: cur.x, y: yTop - 14, w: cur.w, h: cur.h, vx: cur.dir * 60, vy: 0, rot: 0, vr: cur.dir * 2.5 });
+      cur = null; state = 'dying'; sfx.over(); buzz([40, 60, 120]);
+      setTimeout(gameOver, 900);
+      return;
+    }
+
+    let x, w, gained = 10;
+    if (Math.abs(off) <= PERFECT) {
+      combo++; bestCombo = Math.max(bestCombo, combo);
+      x = top.x; w = cur.w;
+      if (combo >= 3 && w < BASE_W) { const g = Math.min(12, BASE_W - w); w += g; x = Math.max(8, Math.min(VW - 8 - w, x - g / 2)); }
+      gained += 10 * combo;
+      sfx.perfect(combo); buzz(15);
+      burst(x + w / 2, yTop + cur.h, 10 + Math.min(combo, 8) * 2, ['#ffc72c', '#fff', '#ff7a59']);
+      pop(combo > 1 ? 'PERFECT ×' + combo : 'PERFECT!', x + w / 2, yTop - 8, '#ffc72c', 22 + Math.min(combo, 6) * 2);
+    } else {
+      combo = 0; x = left; w = ov; sfx.drop(); buzz(8);
+      const cutW = cur.w - ov, cutX = off > 0 ? right : cur.x;
+      debris.push({ type: cur.type, x: cutX, y: yTop, w: cutW, h: cur.h, vx: Math.sign(off) * 70, vy: -40, rot: 0, vr: Math.sign(off) * 4 });
+    }
+
+    layers.push({ type: cur.type, x, w, h: cur.h, base: stackH, squash: 1 });
+    stackH += cur.h; placed++; inBurger++; shake = 5;
+
+    if (cur.type === 'bunT') {
+      burgers++; inBurger = 0;
+      const bonus = 50 * burgers; gained += bonus;
+      const g = Math.min(16, BASE_W - w);                 // a finished burger earns a little width back
+      if (g > 0) { const l = layers[layers.length - 1]; l.w += g; l.x = Math.max(8, Math.min(VW - 8 - l.w, l.x - g / 2)); }
+      sfx.burger(); buzz([20, 40, 20]);
+      burst(x + w / 2, yTop, 40, ['#c8102e', '#ffc72c', '#6cc24a', '#fff']);
+      pop('BURGER #' + burgers + '  +' + bonus, VW / 2, yTop - 40, '#fff', 28);
+    }
+    score += gained; hud(); spawn();
+  }
+
+  function rank(s) {
+    return s < 150 ? 'Trainee' : s < 400 ? 'Fry Cook' : s < 800 ? 'Line Cook' : s < 1500 ? 'Grill Master' : s < 3000 ? 'Stack Captain' : 'Burger Legend';
+  }
+
+  function gameOver() {
+    state = 'over';
+    const isBest = score > best;
+    if (isBest) { best = score; store.set('stacks_best', best); }
+    $('finalScore').textContent = score; $('fBurgers').textContent = burgers; $('fLayers').textContent = placed; $('fCombo').textContent = bestCombo;
+    $('rank').textContent = rank(score); $('newBest').hidden = !isBest || score === 0;
+    $('over').classList.remove('hidden'); hud();
+  }
+
+  function start() {
+    audio(); reset(); state = 'play';
+    $('menu').classList.add('hidden'); $('over').classList.add('hidden'); $('paused').classList.add('hidden');
+  }
+  function togglePause(force) {
+    if (state === 'play' && force !== false) { state = 'paused'; $('paused').classList.remove('hidden'); }
+    else if (state === 'paused' && force !== true) { state = 'play'; $('paused').classList.add('hidden'); last = performance.now(); }
+  }
+
+  // ---------- update ----------
+  function update(dt) {
+    tGlobal += dt;
+    if (state === 'play' && cur) {
+      cur.x += cur.dir * speed() * dt;
+      if (cur.x < 8) { cur.x = 8; cur.dir = 1; }
+      if (cur.x + cur.w > VW - 8) { cur.x = VW - 8 - cur.w; cur.dir = -1; }
+    }
+    const target = Math.max(0, VH * 0.36 - (baseY() - stackH - 50));
+    cam += (target - cam) * Math.min(1, dt * 5);
+    shake *= Math.pow(0.001, dt);
+    for (const l of layers) l.squash *= Math.pow(0.0005, dt);
+    for (const d of debris) { d.vy += 1400 * dt; d.x += d.vx * dt; d.y += d.vy * dt; d.rot += d.vr * dt; }
+    debris = debris.filter(d => d.y + cam < VH + 200);
+    for (const p of parts) { p.t += dt; p.vy += 600 * dt; p.x += p.vx * dt; p.y += p.vy * dt; }
+    parts = parts.filter(p => p.t < p.life);
+    for (const p of pops) { p.t += dt; p.y -= 40 * dt; }
+    pops = pops.filter(p => p.t < 1.1);
+  }
+
+  // ---------- render ----------
+  const SKY = [[0, [126, 200, 242], [255, 236, 200]], [25, [255, 170, 110], [255, 221, 150]], [50, [92, 62, 140], [240, 130, 110]],
+               [80, [20, 22, 60], [70, 50, 120]], [1e9, [8, 8, 28], [30, 24, 70]]];
+  const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
+  function skyColors(n) {
+    for (let i = 0; i < SKY.length - 1; i++) {
+      if (n <= SKY[i + 1][0]) { const t = (n - SKY[i][0]) / (SKY[i + 1][0] - SKY[i][0]); return [mix(SKY[i][1], SKY[i + 1][1], t), mix(SKY[i][2], SKY[i + 1][2], t)]; }
+    }
+    return [SKY[4][1], SKY[4][2]];
+  }
+
+  function render() {
+    ctx.setTransform(dpr * scale, 0, 0, dpr * scale, 0, 0);
+    const n = state === 'menu' ? 0 : (placed || 0);
+    const [c1, c2] = skyColors(n);
+    const g = ctx.createLinearGradient(0, 0, 0, VH);
+    g.addColorStop(0, `rgb(${c1})`); g.addColorStop(1, `rgb(${c2})`);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, VW, VH);
+
+    // stars fade in with height, clouds drift by
+    const night = Math.max(0, Math.min(1, (n - 40) / 30));
+    if (night > 0) {
+      ctx.fillStyle = '#fff';
+      for (let i = 0; i < 50; i++) {
+        const sx = (i * 97.3) % VW, sy = ((i * 53.7) % 1 + (i * 131.1 % VH) + cam * 0.05) % VH;
+        ctx.globalAlpha = night * (0.4 + 0.6 * Math.abs(Math.sin(tGlobal * 1.5 + i)));
+        ctx.fillRect(sx, sy, 2, 2);
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = `rgba(255,255,255,${0.75 * (1 - night)})`;
+    for (let i = 0; i < 5; i++) {
+      const cx = ((i * 173 + tGlobal * (8 + i * 3)) % (VW + 200)) - 100, cy = ((i * 211 + cam * 0.25) % (VH + 100)) - 50;
+      ctx.beginPath(); ctx.ellipse(cx, cy, 44, 15, 0, 0, 7); ctx.ellipse(cx + 26, cy - 9, 26, 14, 0, 0, 7); ctx.ellipse(cx - 24, cy - 6, 22, 11, 0, 0, 7); ctx.fill();
+    }
+
+    ctx.save();
+    ctx.translate((Math.random() - .5) * shake, cam + (Math.random() - .5) * shake);
+    const by = baseY();
+
+    // counter with checkered cloth and plate
+    ctx.fillStyle = '#fff6e0'; ctx.fillRect(-20, by + 12, VW + 40, 400);
+    ctx.fillStyle = '#c8102e';
+    for (let r = 0; r < 12; r++) for (let c = -1; c < 12; c++) if ((r + c) % 2 === 0) ctx.fillRect(c * 40, by + 12 + r * 40, 40, 40);
+    ctx.fillStyle = '#2b1608'; ctx.fillRect(-20, by + 10, VW + 40, 4);
+    ctx.beginPath(); ctx.ellipse(VW / 2, by + 6, 150, 12, 0, 0, 7); ctx.fillStyle = '#fff'; ctx.fill(); ctx.lineWidth = 2.5; ctx.strokeStyle = '#2b1608'; ctx.stroke();
+
+    // stack (only draw what is on screen)
+    for (const l of layers) {
+      const y = by - l.base - l.h;
+      if (y + cam > VH + 40 || y + l.h + cam < -60) continue;
+      const sq = l.squash * 0.25;
+      drawIng(l.type, l.x - l.w * sq * 0.1, y + l.h * sq, l.w * (1 + sq * 0.2), l.h * (1 - sq));
+    }
+
+    // moving piece + drop guide
+    if (cur && state !== 'menu') {
+      const y = by - stackH - cur.h - 46;
+      const top = layers[layers.length - 1];
+      ctx.setLineDash([5, 6]); ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(top.x, y - 20); ctx.lineTo(top.x, by - stackH); ctx.moveTo(top.x + top.w, y - 20); ctx.lineTo(top.x + top.w, by - stackH); ctx.stroke();
+      ctx.setLineDash([]);
+      drawIng(cur.type, cur.x, y, cur.w, cur.h);
+    }
+
+    for (const d of debris) {
+      ctx.save(); ctx.translate(d.x + d.w / 2, d.y + d.h / 2); ctx.rotate(d.rot);
+      drawIng(d.type, -d.w / 2, -d.h / 2, d.w, d.h); ctx.restore();
+    }
+    for (const p of parts) {
+      ctx.globalAlpha = 1 - p.t / p.life; ctx.fillStyle = p.c;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    ctx.textAlign = 'center'; ctx.lineJoin = 'round';
+    for (const p of pops) {
+      const s = p.size * (1 + Math.max(0, 0.25 - p.t) * 2);
+      ctx.globalAlpha = Math.min(1, (1.1 - p.t) * 2.5);
+      ctx.font = `900 ${s}px "Arial Rounded MT Bold","Trebuchet MS",sans-serif`;
+      ctx.lineWidth = 5; ctx.strokeStyle = '#2b1608'; ctx.strokeText(p.text, p.x, p.y);
+      ctx.fillStyle = p.color; ctx.fillText(p.text, p.x, p.y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
+  }
+
+  // ---------- loop ----------
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.033, (now - last) / 1000); last = now;
+    if (state !== 'paused') update(dt);
+    render();
+    requestAnimationFrame(frame);
+  }
+
+  // ---------- input ----------
+  cv.addEventListener('pointerdown', e => { e.preventDefault(); audio(); drop(); });
+  addEventListener('keydown', e => {
+    if (e.code === 'Space' || e.code === 'Enter' || e.code === 'ArrowDown') {
+      e.preventDefault(); if (e.repeat) return;
+      if (state === 'play') drop(); else if (state === 'menu' || state === 'over') start(); else if (state === 'paused') togglePause();
+    } else if (e.code === 'KeyP' || e.code === 'Escape') togglePause();
+  });
+  $('start').onclick = start; $('again').onclick = start; $('resume').onclick = () => togglePause(false);
+  $('pause').onclick = () => togglePause();
+  const muteBtn = $('mute');
+  const showMute = () => { muteBtn.textContent = muted ? '🔇' : '🔊'; };
+  muteBtn.onclick = () => { muted = !muted; store.set('stacks_muted', muted ? '1' : '0'); showMute(); audio(); };
+  showMute();
+  document.addEventListener('visibilitychange', () => { if (document.hidden) togglePause(true); });
+
+  // test hook: lets automated checks read state and line up drops
+  window.__stacks = { get s() { return { state, score, burgers, placed, combo, cur, top: layers[layers.length - 1] }; }, drop };
+
+  $('best').textContent = best;
+  demoStack();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
