@@ -8,6 +8,12 @@ A one-tap arcade game. Tap to throw a boomerang; it always comes back.
   and experience orbs level you up with a choice of upgrades. A boss arrives every fifth wave.
 - **Between runs:** gems buy permanent upgrades, and rotating quests pay out more gems. Progress is saved on the device.
 
+## Public web version
+
+`.github/workflows/pages.yml` publishes `www/` to GitHub Pages on every push to `main`
+(the privacy policy is served at `/privacy.html`). One-time setup: repository
+Settings > Pages > Source: **GitHub Actions**.
+
 ## iOS app
 
 The game is wrapped with [Capacitor](https://capacitorjs.com). The Xcode project lives in `ios/`.
