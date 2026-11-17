@@ -63,8 +63,12 @@ function syncPayouts(opts) {
         continue;
       }
       if (allowed.indexOf(status) < 0) {
-        var why = status === 'NONE' ? 'Toast reports this payout as failed/unavailable (status NONE).' : 'Payout status ' + status + ' not in postStatuses.';
-        (status === 'NONE' ? result.held : result.skipped).push({ label: label, reason: why });
+        // Never skip silently: anything not postable is held and reported.
+        var why = status === 'NONE'
+          ? 'Toast reports this payout as failed/unavailable (status NONE).'
+          : 'Toast payout status is "' + (row.payoutStatus === undefined ? '(missing)' : row.payoutStatus) +
+            '", not one of ' + allowed.join('/') + '; add it to CONFIG.sync.postStatuses if this payout reached the bank.';
+        result.held.push({ label: label, reason: why });
         continue;
       }
 

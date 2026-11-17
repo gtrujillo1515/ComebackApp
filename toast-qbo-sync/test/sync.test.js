@@ -51,6 +51,10 @@ test('posts new payouts, skips ones already in QuickBooks, holds bad ones, ignor
   assert.deepEqual(plain(r.posted.map((x) => x.label)), ['Truck 2 2026-11-10']);
   assert.deepEqual(plain(r.existing.map((x) => x.label)), ['Tacoma 2026-11-10']);
   assert.deepEqual(plain(r.held.map((x) => x.label).sort()), ['Trailer 2026-11-10', 'Truck 2 2026-11-09']);
+  // statuses Toast uses for older payouts are held and reported, never skipped silently
+  const odd = ctx.syncPayouts({ config: config(ctx), toast: fakeToast([row('Old', 'go', '20260105', { payoutStatus: 'COMPLETED' })], goodDetail),
+    qbo: fakeQbo(), startYmd: '20260105', endYmd: '20260105', dryRun: false });
+  assert.match(odd.held[0].reason, /status is "COMPLETED"/);
   assert.deepEqual(plain(r.skipped.map((x) => x.label)), ['Truck 4 2026-11-10']);
   assert.equal(r.errors.length, 0);
   assert.equal(qbo.created.length, 1);

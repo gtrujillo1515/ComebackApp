@@ -347,6 +347,9 @@ function debugPayoutDetail() {
 /** Which Toast locations (including excluded ones) had payouts in January 2026. */
 function showJanuaryPayouts() { showPayoutsByLocation_('20260101', '20260131'); }
 
+/** Which Toast locations (including excluded ones) had payouts in February 2026. */
+function showFebruaryPayouts() { showPayoutsByLocation_('20260201', '20260228'); }
+
 /** Which Toast locations (including excluded ones) had payouts in June 2026. */
 function showJunePayouts() { showPayoutsByLocation_('20260601', '20260630'); }
 
@@ -619,6 +622,9 @@ function catchUpStep() {
     counts.previews = (counts.previews || 0) + result.previews.length;
     counts.existing = (counts.existing || 0) + result.existing.length;
     counts.held = (counts.held || 0) + result.held.length;
+    counts.skipped = (counts.skipped || 0) + result.skipped.length;
+    counts.toastPayoutsSeen = (counts.toastPayoutsSeen || 0) + result.posted.length + result.existing.length +
+      result.held.length + result.skipped.length + result.errors.length + result.previews.length;
     props.setProperty('CATCHUP_COUNTS', JSON.stringify(counts));
     var held = JSON.parse(props.getProperty('CATCHUP_HELD') || '[]');
     result.held.forEach(function (h) {
@@ -1826,8 +1832,12 @@ function syncPayouts(opts) {
         continue;
       }
       if (allowed.indexOf(status) < 0) {
-        var why = status === 'NONE' ? 'Toast reports this payout as failed/unavailable (status NONE).' : 'Payout status ' + status + ' not in postStatuses.';
-        (status === 'NONE' ? result.held : result.skipped).push({ label: label, reason: why });
+        // Never skip silently: anything not postable is held and reported.
+        var why = status === 'NONE'
+          ? 'Toast reports this payout as failed/unavailable (status NONE).'
+          : 'Toast payout status is "' + (row.payoutStatus === undefined ? '(missing)' : row.payoutStatus) +
+            '", not one of ' + allowed.join('/') + '; add it to CONFIG.sync.postStatuses if this payout reached the bank.';
+        result.held.push({ label: label, reason: why });
         continue;
       }
 
