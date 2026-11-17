@@ -350,6 +350,32 @@ function showJanuaryPayouts() { showPayoutsByLocation_('20260101', '20260131'); 
 /** Which Toast locations (including excluded ones) had payouts in February 2026. */
 function showFebruaryPayouts() { showPayoutsByLocation_('20260201', '20260228'); }
 
+/**
+ * How far back Toast's payout history goes: checks the first week of every
+ * month this year (all locations) and logs how many payouts Toast returns.
+ */
+function findPayoutHistoryStart() {
+  var all = JSON.parse(JSON.stringify(CONFIG));
+  all.toast.restaurantIds = [];
+  var toast = new ToastClient(all);
+  var year = todayYmd().slice(0, 4);
+  var out = [];
+  for (var m = 1; m <= 12; m++) {
+    var start = year + ('0' + m).slice(-2) + '01';
+    if (start > todayYmd()) break;
+    var end = addDaysYmd(start, 6);
+    try {
+      var rows = toast.getSettledPayouts(start, end);
+      var card = rows.reduce(function (s, r) { return s + toCents(r.paymentAmount); }, 0);
+      out.push(ymdToIso(start) + '..' + ymdToIso(end) + ': ' + rows.length + ' payouts, card ' + formatMoney(card));
+    } catch (e) {
+      out.push(ymdToIso(start) + ': error ' + e.message);
+    }
+    Runtime.sleep(7000); // Toast allows 10 of these requests a minute
+  }
+  Logger.log('Toast payout history, first week of each month:\n' + out.join('\n'));
+}
+
 /** Which Toast locations (including excluded ones) had payouts in June 2026. */
 function showJunePayouts() { showPayoutsByLocation_('20260601', '20260630'); }
 
