@@ -155,3 +155,24 @@ test('reads a payout\'s payments from the settled-date report (how Toast actuall
   assert.equal(checkDates[0], '20261109', 'UTC timestamps: look at the previous business date first');
   assert.ok(detail.checksByGuid.ca);
 });
+
+test('can ask Toast for inactive location records', () => {
+  const f = fakeFetch([
+    ['post', /\/era\/v1\/payout\/week\?onlyInactiveRestaurants=TRUE$/, () => ({ code: 200, text: JSON.stringify(GUID1) })],
+    ['get', new RegExp('/era/v1/payout/' + GUID1), () => ({ code: 200, text: JSON.stringify([{ restaurantGuid: 'old', restaurantName: 'Old Tacoma' }]) })],
+    ['get', /restaurants-information/, () => ({ code: 200, text: '[]' })],
+  ]);
+  const ctx = load({ fetch: f.fetch });
+  const rows = new ctx.ToastClient(config(ctx)).getSettledPayouts('20260101', '20260107', { inactive: true });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].restaurantGuid, 'old');
+});
+
+test('"No inactive restaurants found" means no rows, not an error', () => {
+  const f = fakeFetch([
+    ['post', /onlyInactiveRestaurants=TRUE/, () => ({ code: 400, text: 'No inactive restaurants found' })],
+    ['get', /restaurants-information/, () => ({ code: 200, text: '[]' })],
+  ]);
+  const ctx = load({ fetch: f.fetch });
+  assert.equal(new ctx.ToastClient(config(ctx)).getSettledPayouts('20260101', '20260107', { inactive: true }).length, 0);
+});

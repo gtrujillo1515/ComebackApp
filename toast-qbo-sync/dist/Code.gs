@@ -353,30 +353,46 @@ function showJunePayouts() { showPayoutsByLocation_('20260601', '20260630'); }
 function showPayoutsByLocation_(startYmd, endYmd) {
   var all = JSON.parse(JSON.stringify(CONFIG));
   all.toast.restaurantIds = []; // ask Toast for every location
-  var rows = new ToastClient(all).getSettledPayouts(startYmd, endYmd);
+  var toast = new ToastClient(all);
   var wanted = CONFIG.toast.restaurantIds || [];
-  var by = {};
-  rows.forEach(function (r) {
-    var k = r.restaurantGuid;
-    var b = by[k] || (by[k] = { name: r.restaurantName, n: 0, card: 0, wh: 0, payout: 0, first: '', last: '', statuses: {} });
-    b.n++;
-    b.card += toCents(r.paymentAmount);
-    b.wh += toCents(r.withholdingAmount);
-    b.payout += toCents(r.payoutAmount);
-    var d = toYmd(r.settledDate);
-    if (!b.first || d < b.first) b.first = d;
-    if (!b.last || d > b.last) b.last = d;
-    b.statuses[r.payoutStatus] = (b.statuses[r.payoutStatus] || 0) + 1;
+  try {
+    Logger.log('Toast location records: ' + JSON.stringify(toast.getRestaurants().map(function (r) {
+      return String(r.restaurantName).trim() + (r.active === false ? ' [inactive]' : '') + (r.archived ? ' [archived]' : '') +
+        (r.testMode ? ' [test]' : '');
+    })));
+  } catch (e) { Logger.log('Could not list locations: ' + e.message); }
+
+  [['ACTIVE location records', {}], ['INACTIVE location records', { inactive: true }]].forEach(function (pass) {
+    var rows;
+    try {
+      rows = toast.getSettledPayouts(startYmd, endYmd, pass[1]);
+    } catch (e) {
+      Logger.log(pass[0] + ': error ' + e.message);
+      return;
+    }
+    var by = {};
+    rows.forEach(function (r) {
+      var k = r.restaurantGuid;
+      var b = by[k] || (by[k] = { name: r.restaurantName, n: 0, card: 0, wh: 0, payout: 0, first: '', last: '', statuses: {} });
+      b.n++;
+      b.card += toCents(r.paymentAmount);
+      b.wh += toCents(r.withholdingAmount);
+      b.payout += toCents(r.payoutAmount);
+      var d = toYmd(r.settledDate);
+      if (!b.first || d < b.first) b.first = d;
+      if (!b.last || d > b.last) b.last = d;
+      b.statuses[r.payoutStatus] = (b.statuses[r.payoutStatus] || 0) + 1;
+    });
+    var lines = Object.keys(by).map(function (k) {
+      var b = by[k];
+      return '  ' + (wanted.indexOf(k) >= 0 ? 'INCLUDED ' : 'excluded ') + b.name + ' (' + k + '): ' + b.n + ' payouts ' +
+        ymdToIso(b.first) + '..' + ymdToIso(b.last) + ', card ' + formatMoney(b.card) + ', withheld ' + formatMoney(b.wh) +
+        (b.card ? ' (' + (100 * b.wh / b.card).toFixed(2) + '%)' : '') + ', paid out ' + formatMoney(b.payout) +
+        ', status ' + JSON.stringify(b.statuses);
+    });
+    Logger.log(pass[0] + ', ' + ymdToIso(startYmd) + '..' + ymdToIso(endYmd) + ': ' + rows.length + ' payouts\n' +
+      (lines.join('\n') || '  (none)'));
   });
-  var lines = Object.keys(by).map(function (k) {
-    var b = by[k];
-    return (wanted.indexOf(k) >= 0 ? 'INCLUDED ' : 'excluded ') + b.name + ' (' + k + '): ' + b.n + ' payouts ' +
-      ymdToIso(b.first) + '..' + ymdToIso(b.last) + ', card ' + formatMoney(b.card) + ', withheld ' + formatMoney(b.wh) +
-      (b.card ? ' (' + (100 * b.wh / b.card).toFixed(2) + '%)' : '') + ', paid out ' + formatMoney(b.payout) +
-      ', status ' + JSON.stringify(b.statuses);
-  });
-  Logger.log(rows.length + ' Toast payouts ' + ymdToIso(startYmd) + '..' + ymdToIso(endYmd) + ' by location:\n' +
-    (lines.join('\n') || '(none)'));
 }
 
 /** Every QuickBooks name the config refers to, for checkSetup. */
@@ -1264,6 +1280,7 @@ ToastClient.prototype.runReport = function (postPath, getBase, body, slow) {
       this.lastSlowPostAt = Runtime.now();
     }
     var post = this.request('post', postPath, body);
+    if (/no inactive restaurants found/i.test(String(post.text || ''))) return [];
     if (post.code !== 200) {
       throw new Error('Toast POST ' + postPath + ' failed (HTTP ' + post.code + '): ' + String(post.text).slice(0, 500));
     }
@@ -1343,12 +1360,14 @@ ToastClient.prototype.locationName = function (row) {
 };
 
 /** Settled-date payout rows for an inclusive date range (any length). */
-ToastClient.prototype.getSettledPayouts = function (startYmd, endYmd) {
+ToastClient.prototype.getSettledPayouts = function (startYmd, endYmd, opts) {
   var self = this;
   var rows = [];
+  // Toast leaves out inactive (deactivated) location records unless asked.
+  var q = opts && opts.inactive ? '?onlyInactiveRestaurants=TRUE' : '';
   chunkDateRange(startYmd, endYmd, 7).forEach(function (ch) {
     var range = ch.days === 1 ? 'day' : 'week';
-    var part = self.runReport('/era/v1/payout/' + range, '/era/v1/payout',
+    var part = self.runReport('/era/v1/payout/' + range + q, '/era/v1/payout',
       self.reportBody_({ startDate: ch.start, endDate: ch.end }), false);
     rows = rows.concat(part);
   });

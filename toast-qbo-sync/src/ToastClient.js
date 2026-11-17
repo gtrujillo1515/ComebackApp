@@ -100,6 +100,7 @@ ToastClient.prototype.runReport = function (postPath, getBase, body, slow) {
       this.lastSlowPostAt = Runtime.now();
     }
     var post = this.request('post', postPath, body);
+    if (/no inactive restaurants found/i.test(String(post.text || ''))) return [];
     if (post.code !== 200) {
       throw new Error('Toast POST ' + postPath + ' failed (HTTP ' + post.code + '): ' + String(post.text).slice(0, 500));
     }
@@ -179,12 +180,14 @@ ToastClient.prototype.locationName = function (row) {
 };
 
 /** Settled-date payout rows for an inclusive date range (any length). */
-ToastClient.prototype.getSettledPayouts = function (startYmd, endYmd) {
+ToastClient.prototype.getSettledPayouts = function (startYmd, endYmd, opts) {
   var self = this;
   var rows = [];
+  // Toast leaves out inactive (deactivated) location records unless asked.
+  var q = opts && opts.inactive ? '?onlyInactiveRestaurants=TRUE' : '';
   chunkDateRange(startYmd, endYmd, 7).forEach(function (ch) {
     var range = ch.days === 1 ? 'day' : 'week';
-    var part = self.runReport('/era/v1/payout/' + range, '/era/v1/payout',
+    var part = self.runReport('/era/v1/payout/' + range + q, '/era/v1/payout',
       self.reportBody_({ startDate: ch.start, endDate: ch.end }), false);
     rows = rows.concat(part);
   });
