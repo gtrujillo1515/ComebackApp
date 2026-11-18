@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Comeback</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+@font-face { font-family: "Lilita One"; font-weight: 400; font-display: swap; src: url(fonts/lilita-one-latin-400-normal.woff2) format("woff2"); }
+@font-face { font-family: "Nunito"; font-weight: 600; font-display: swap; src: url(fonts/nunito-latin-600-normal.woff2) format("woff2"); }
+@font-face { font-family: "Nunito"; font-weight: 800; font-display: swap; src: url(fonts/nunito-latin-800-normal.woff2) format("woff2"); }
+/* Layout: one full-bleed lagoon-at-night arena; HUD and menus float over it as quiet sand-coloured type. */
+:root {
+  color-scheme: dark;
+  --ink: #0b1f25;          /* deep lagoon, page ground */
+  --ink-2: #123039;        /* raised panels */
+  --ink-3: #1b434e;        /* borders, tracks */
+  --sand: #f6ead2;         /* text */
+  --sand-dim: #a9b9b2;     /* secondary text */
+  --amber: #ffb23e;        /* the boomerang, primary action */
+  --amber-deep: #c9781a;
+  --coral: #ff6b5e;        /* danger, hearts */
+  --aqua: #5ee0c8;         /* xp */
+  --sky: #7fd0ff;          /* gems */
+  --display: "Lilita One", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+  --body: "Nunito", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --gutter-l: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+  box-sizing: border-box;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; background: var(--ink); color: var(--sand);
+  font: 600 15px/1.4 var(--body); overflow: hidden;
+  -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+}
+#app { position: relative; height: 100%; overflow: hidden; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+button:focus-visible { outline: 3px solid var(--sky); outline-offset: 2px; }
+
+/* HUD */
+#hud { position: absolute; inset: 0; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between;
+  padding-block: 10px 12px; padding-left: var(--gutter-l); padding-right: var(--gutter-r); }
+.hud-top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: 8px; }
+#hearts { color: var(--coral); font-size: 22px; letter-spacing: 2px; line-height: 1.2; }
+#hearts .off { color: var(--ink-3); }
+.mid { text-align: center; }
+#score { font: 30px/1 var(--display); font-variant-numeric: tabular-nums; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
+#combo { font: 16px/1.2 var(--display); color: var(--amber); min-height: 20px; }
+.right { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+#gems { color: var(--sky); font-weight: 800; font-variant-numeric: tabular-nums; }
+#pauseBtn { pointer-events: auto; width: 40px; height: 40px; border-radius: 50%; background: var(--ink-2); border: 2px solid var(--ink-3);
+  font: 14px/1 var(--display); letter-spacing: 2px; padding-left: 2px; }
+#banner { position: absolute; left: 0; right: 0; top: 22%; text-align: center; font: 34px/1.1 var(--display); color: var(--sand);
+  text-shadow: 0 3px 0 rgba(0,0,0,.4); opacity: 0; padding-inline: 16px; }
+#banner small { display: block; font: 800 15px/1.5 var(--body); color: var(--amber); }
+#banner.show { animation: banner 2.2s ease-out both; }
+@keyframes banner { 0% { opacity: 0; transform: translateY(12px) scale(.9); } 12% { opacity: 1; transform: none; } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
+.hud-bot { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 13px; }
+.bar { flex: 1; height: 10px; border-radius: 6px; background: rgba(18,48,57,.85); overflow: hidden; border: 1px solid var(--ink-3); }
+.bar i { display: block; height: 100%; width: 0; background: var(--aqua); border-radius: 6px; transition: width .15s; }
+#lvl { color: var(--aqua); } #wave { color: var(--sand-dim); }
+
+/* Screens */
+.screen { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  padding-block: 20px; padding-left: var(--gutter-l); padding-right: var(--gutter-r);
+  background: rgba(11,31,37,.78); overflow-y: auto; text-align: center; }
+#menu { background: linear-gradient(rgba(11,31,37,0) 30%, rgba(11,31,37,.92) 60%); justify-content: flex-end; padding-bottom: 28px; }
+.screen > * { flex-shrink: 0; }
+h1 { font: clamp(54px, 15vw, 104px)/.9 var(--display); margin: 0; color: var(--amber); letter-spacing: 1px;
+  text-shadow: 0 5px 0 var(--amber-deep), 0 10px 22px rgba(0,0,0,.45); transform: rotate(-3deg); }
+h2 { font: 34px/1 var(--display); margin: 0; text-wrap: balance; }
+.tag { margin: 0; font-size: 17px; color: var(--sand); }
+.dim { color: var(--sand-dim); margin: 0; }
+.btn { background: var(--amber); color: #3a2204; font: 24px/1 var(--display); padding: 14px 40px; border-radius: 999px;
+  box-shadow: 0 5px 0 var(--amber-deep); transition: transform .08s, box-shadow .08s; }
+.btn:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--amber-deep); }
+.btn.ghost { background: var(--ink-2); color: var(--sand); box-shadow: 0 4px 0 #071418; border: 2px solid var(--ink-3); font-size: 17px; padding: 10px 22px; }
+.row { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
+.panel { width: min(100%, 440px); display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.panel h3 { margin: 0; font: 800 12px/1 var(--body); letter-spacing: .12em; text-transform: uppercase; color: var(--sand-dim); }
+.quest { background: rgba(18,48,57,.9); border-radius: 12px; padding: 9px 12px; display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; font-size: 14px; }
+.quest b { color: var(--sky); font-weight: 800; }
+.quest .bar { grid-column: 1 / -1; height: 6px; }
+.quest .bar i { background: var(--amber); }
+.quest.done { opacity: .6; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: min(100%, 440px); }
+.stats div { background: rgba(18,48,57,.9); border-radius: 12px; padding: 10px; }
+.stats span { display: block; font-size: 12px; color: var(--sand-dim); text-transform: uppercase; letter-spacing: .1em; }
+.stats strong { font: 24px/1.2 var(--display); font-variant-numeric: tabular-nums; }
+.cards { display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; width: min(100%, 720px); }
+.card { flex: 1 1 180px; max-width: 230px; min-width: 0; background: var(--ink-2); border: 2px solid var(--ink-3); border-radius: 18px; padding: 16px 14px;
+  display: flex; flex-direction: column; align-items: center; gap: 6px; transition: transform .1s, border-color .1s; }
+.card:hover, .card:focus-visible { transform: translateY(-4px); border-color: var(--amber); }
+.card svg { width: 44px; height: 44px; }
+.card strong { font: 20px/1.1 var(--display); }
+.card span { font-size: 14px; color: var(--sand-dim); }
+.card em { font-style: normal; font-size: 12px; font-weight: 800; color: var(--aqua); letter-spacing: .08em; }
+@media (max-width: 520px) { .card { flex-basis: 100%; max-width: none; flex-direction: row; text-align: left; padding: 12px; gap: 12px; }
+  .card div { flex: 1; min-width: 0; } }
+.card div { display: flex; flex-direction: column; gap: 3px; }
+.shopitem { background: rgba(18,48,57,.9); border-radius: 12px; padding: 10px 12px; display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; align-items: center; }
+.shopitem strong { font: 18px/1.2 var(--display); }
+.shopitem span { font-size: 13px; color: var(--sand-dim); }
+.shopitem .pips { color: var(--amber); letter-spacing: 3px; font-size: 11px; }
+.buy { grid-row: 1 / span 3; grid-column: 2; background: var(--sky); color: #06202c; font-weight: 800; border-radius: 999px; padding: 8px 14px; min-width: 76px; }
+.buy:disabled { background: var(--ink-3); color: var(--sand-dim); cursor: default; }
+.wallet { color: var(--sky); font: 22px/1 var(--display); }
+kbd { font: inherit; background: var(--ink-3); border-radius: 5px; padding: 0 6px; }
+@media (prefers-reduced-motion: reduce) { #banner.show { animation-duration: 2.2s; animation-timing-function: step-end; } .card, .btn { transition: none; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="c" aria-label="Game arena"></canvas>
+
+  <div id="hud" hidden>
+    <div class="hud-top">
+      <div id="hearts" aria-label="Hearts"></div>
+      <div class="mid"><div id="score">0</div><div id="combo"></div></div>
+      <div class="right"><span id="gems"></span><button id="pauseBtn" aria-label="Pause">II</button></div>
+    </div>
+    <div id="banner" aria-live="polite"></div>
+    <div class="hud-bot"><span id="lvl">Lv 1</span><div class="bar"><i id="xpfill"></i></div><span id="wave">Wave 1</span></div>
+  </div>
+
+  <div id="menu" class="screen">
+    <h1>Comeback</h1>
+    <p class="tag">Tap to throw. It always comes back.</p>
+    <button class="btn" id="playBtn">Play</button>
+    <div class="row">
+      <button class="btn ghost" id="shopBtn">Upgrades</button>
+      <button class="btn ghost" id="muteBtn">Sound on</button>
+    </div>
+    <p class="dim" id="bestLine"></p>
+    <div class="panel"><h3>Quests</h3><div id="questList" class="panel"></div></div>
+  </div>
+
+  <div id="levelup" class="screen" hidden>
+    <h2 id="luTitle">Level up</h2>
+    <p class="dim">Pick one</p>
+    <div class="cards" id="cards"></div>
+    <button class="btn ghost" id="rerollBtn">Reroll</button>
+  </div>
+
+  <div id="pause" class="screen" hidden>
+    <h2>Paused</h2>
+    <p class="dim">Hold to keep throwing. Hits on the way back score double.</p>
+    <button class="btn" id="resumeBtn">Resume</button>
+    <div class="row">
+      <button class="btn ghost" id="muteBtn2">Sound on</button>
+      <button class="btn ghost" id="quitBtn">End run</button>
+    </div>
+  </div>
+
+  <div id="over" class="screen" hidden>
+    <h2 id="overTitle">Run over</h2>
+    <div class="stats" id="overStats"></div>
+    <button class="btn" id="againBtn">Play again</button>
+    <div class="row">
+      <button class="btn ghost" id="shopBtn2">Upgrades</button>
+      <button class="btn ghost" id="menuBtn">Menu</button>
+    </div>
+    <div class="panel"><h3>Quests</h3><div id="questList2" class="panel"></div></div>
+  </div>
+
+  <div id="shop" class="screen" hidden>
+    <h2>Upgrades</h2>
+    <p class="wallet" id="wallet"></p>
+    <p class="dim">These stay with you for every run.</p>
+    <div class="panel" id="shopList"></div>
+    <button class="btn" id="shopBack">Done</button>
+  </div>
+</div>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const cv = $('c'), ctx = cv.getContext('2d');
+const TAU = Math.PI * 2;
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const rnd = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.random() * a.length | 0];
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const C = { sand: '#f6ead2', amber: '#ffb23e', amberDeep: '#c9781a', coral: '#ff6b5e', aqua: '#5ee0c8', sky: '#7fd0ff', ink: '#0b1f25' };
+
+/* ---------- save ---------- */
+const KEY = 'comeback-save-v1';
+const save = Object.assign({ gems: 0, best: 0, bestWave: 0, runs: 0, mute: false, meta: {}, quests: [], qt: {} }, (() => {
+  try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { return {}; }
+})());
+/* Inside the iOS app (Capacitor) saves also go to native storage, which iOS never purges, and hits give haptics. */
+const cap = window.Capacitor, native = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
+function plugin(name, method, opts) {
+  try {
+    if (!native) return Promise.resolve(null);
+    const p = cap.Plugins && cap.Plugins[name];
+    if (p && typeof p[method] === 'function') return Promise.resolve(p[method](opts || {})).catch(() => null);
+    if (cap.nativePromise) return cap.nativePromise(name, method, opts || {}).catch(() => null);
+  } catch (e) {}
+  return Promise.resolve(null);
+}
+const persist = () => {
+  const v = JSON.stringify(save);
+  try { localStorage.setItem(KEY, v); } catch (e) {}
+  plugin('Preferences', 'set', { key: KEY, value: v });
+};
+let lastBuzz = 0;
+function buzz(kind) {
+  if (!native || save.haptics === false) return;
+  const now = performance.now(); if (kind === 'LIGHT' && now - lastBuzz < 70) return; lastBuzz = now;
+  if (kind === 'SUCCESS' || kind === 'ERROR') plugin('Haptics', 'notification', { type: kind });
+  else plugin('Haptics', 'impact', { style: kind });
+}
+
+/* ---------- audio ---------- */
+let AC = null, master = null, lastHit = 0;
+function audioOn() {
+  if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); master = AC.createGain(); master.gain.value = .2; master.connect(AC.destination); } catch (e) {} }
+  if (AC && AC.state === 'suspended') AC.resume();
+}
+function tone(f, d, type, v, slide, delay) {
+  if (!AC || save.mute) return;
+  const t = AC.currentTime + (delay || 0), o = AC.createOscillator(), g = AC.createGain();
+  o.type = type || 'sine'; o.frequency.setValueAtTime(f, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f * slide), t + d);
+  g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(v || .5, t + .01); g.gain.exponentialRampToValueAtTime(.0001, t + d);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + d + .03);
+}
+const SCALE = [0, 2, 4, 7, 9];
+const note = n => 261.63 * Math.pow(2, (SCALE[n % 5] + 12 * Math.floor(n / 5)) / 12);
+const sfx = {
+  throw: () => tone(520, .12, 'triangle', .18, .45),
+  hit: n => { const now = performance.now(); if (now - lastHit < 45) return; lastHit = now; tone(note(Math.min(n, 14)), .16, 'triangle', .5); },
+  tick: () => tone(180, .05, 'sine', .25),
+  orb: () => tone(1320, .05, 'sine', .12),
+  gem: () => { tone(1568, .09, 'sine', .3); tone(2093, .14, 'sine', .25, 0, .07); },
+  level: () => [0, 2, 4, 7].forEach((n, i) => tone(note(n + 5), .2, 'triangle', .4, 0, i * .07)),
+  hurt: () => tone(160, .35, 'sawtooth', .45, .4),
+  heal: () => { tone(660, .12, 'sine', .3); tone(880, .18, 'sine', .3, 0, .1); },
+  boss: () => tone(90, .7, 'sawtooth', .4, .6),
+  big: () => [0, 4, 7, 9, 12].forEach((n, i) => tone(note(n), .28, 'square', .16, 0, i * .06)),
+};
+
+/* ---------- definitions ---------- */
+const ic = p => `<svg viewBox="0 0 44 44" fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const BOOM = c => `<path d="M8 34 Q10 10 36 8 Q20 16 16 36 Z" fill="${c}" stroke="${c}"/>`;
+const UP = {
+  multi:  { n: 'Extra boomerang', d: 'Throw one more at a time', max: 3, i: ic(BOOM(C.amber) + `<path d="M30 28v12M24 34h12" stroke="${C.sand}"/>`) },
+  sharp:  { n: 'Keen edge', d: '+1 damage on every hit', max: 6, i: ic(`<path d="M8 36 34 10M26 8h10v10" stroke="${C.coral}"/>`) },
+  size:   { n: 'Big blade', d: 'Boomerangs grow 20% larger', max: 5, i: ic(BOOM(C.amber) + `<circle cx="22" cy="22" r="19" stroke="${C.sand}" stroke-dasharray="3 7"/>`) },
+  speed:  { n: 'Quick wrist', d: 'Boomerangs fly 12% faster', max: 5, i: ic(`<path d="M6 14h20M6 22h30M6 30h20" stroke="${C.aqua}"/><path d="M30 14l8 8-8 8" stroke="${C.aqua}"/>`) },
+  arc:    { n: 'Wide arc', d: 'The loop sweeps 25% wider', max: 4, i: ic(`<ellipse cx="22" cy="22" rx="17" ry="10" stroke="${C.amber}"/><path d="M22 6v6M22 32v6" stroke="${C.sand}"/>`) },
+  range:  { n: 'Long arm', d: 'Throw 15% farther', max: 4, i: ic(`<path d="M6 22h30M28 14l8 8-8 8" stroke="${C.amber}"/><path d="M6 12v20" stroke="${C.sand}"/>`) },
+  magnet: { n: 'Magnet', d: 'Pull in drops from 50% farther', max: 4, i: ic(`<path d="M10 8v14a12 12 0 0 0 24 0V8" stroke="${C.coral}"/><path d="M6 8h8M30 8h8" stroke="${C.sand}"/>`) },
+  heart:  { n: 'Big heart', d: '+1 max heart and a full heal', max: 3, i: ic(`<path d="M22 36C8 26 6 18 10 12c4-5 10-3 12 2 2-5 8-7 12-2 4 6 2 14-12 24Z" fill="${C.coral}" stroke="${C.coral}"/>`) },
+  echo:   { n: 'Catch pulse', d: 'Each catch blasts enemies near you', max: 4, i: ic(`<circle cx="22" cy="22" r="5" fill="${C.sand}" stroke="${C.sand}"/><circle cx="22" cy="22" r="13" stroke="${C.aqua}"/><circle cx="22" cy="22" r="19" stroke="${C.aqua}" opacity=".5"/>`) },
+  shard:  { n: 'Splinters', d: 'Shards burst out at the far turn', max: 4, i: ic(`<path d="M22 22 8 10M22 22l14-12M22 22v16" stroke="${C.amber}"/><circle cx="22" cy="22" r="4" fill="${C.sand}" stroke="${C.sand}"/>`) },
+  frost:  { n: 'Chill', d: 'Hits slow enemies for 2 seconds', max: 3, i: ic(`<path d="M22 6v32M8 14l28 16M36 14 8 30" stroke="${C.sky}"/>`) },
+  orbit:  { n: 'Guardian', d: 'A blade circles you for protection', max: 3, i: ic(`<circle cx="22" cy="22" r="6" fill="${C.sand}" stroke="${C.sand}"/><circle cx="22" cy="22" r="16" stroke="${C.sand}" opacity=".35"/><circle cx="36" cy="14" r="4" fill="${C.amber}" stroke="${C.amber}"/>`) },
+};
+const META = {
+  vit:    { n: 'Vitality', d: 'Start each run with +1 heart', cost: [40, 130] },
+  head:   { n: 'Head start', d: 'Begin each run with a free upgrade', cost: [30, 90, 180] },
+  xp:     { n: 'Quick learner', d: '+10% experience', cost: [15, 30, 55, 90, 140] },
+  gem:    { n: 'Fortune', d: '+20% gems', cost: [15, 30, 55, 90, 140] },
+  reroll: { n: 'Second look', d: '+1 reroll per run', cost: [20, 50, 110] },
+};
+const ET = {
+  drift: { r: 15, hp: 1,  spd: 42, xp: 1,  sc: 10,  col: '#ff6b5e' },
+  dart:  { r: 10, hp: .6, spd: 78, xp: 1,  sc: 15,  col: '#e2e85a' },
+  weave: { r: 13, hp: 1,  spd: 56, xp: 1,  sc: 15,  col: '#ff9d4d' },
+  tank:  { r: 24, hp: 4,  spd: 26, xp: 3,  sc: 40,  col: '#9a86e8' },
+  split: { r: 19, hp: 2,  spd: 36, xp: 2,  sc: 25,  col: '#ee5fa0' },
+  mini:  { r: 10, hp: .6, spd: 62, xp: 1,  sc: 8,   col: '#ee5fa0' },
+  boss:  { r: 56, hp: 45, spd: 18, xp: 25, sc: 500, col: '#d9413f' },
+};
+const QT = {
+  kills: { f: t => 40 + 40 * t, s: n => `Defeat ${n} enemies in one run`, v: g => g.kills },
+  cb:    { f: t => 12 + 12 * t, s: n => `Land ${n} comeback hits that finish an enemy`, v: g => g.cbKills },
+  wave:  { f: t => 3 + 2 * t,   s: n => `Reach wave ${n}`, v: g => g.wave },
+  combo: { f: t => 10 + 8 * t,  s: n => `Build a ×${n} combo`, v: g => g.bestCombo },
+  score: { f: t => Math.round(15 * Math.pow(1.8, t)) * 100, s: n => `Score ${n.toLocaleString()} in one run`, v: g => g.score },
+};
+function newQuest() {
+  const used = save.quests.map(q => q.type), type = pick(Object.keys(QT).filter(k => !used.includes(k)));
+  const tier = save.qt[type] || 0; save.qt[type] = tier + 1;
+  return { type, target: QT[type].f(tier), reward: 10 + 5 * Math.min(tier, 8), p: 0, done: false };
+}
+save.quests = save.quests.filter(q => QT[q.type]);
+while (save.quests.length < 3) save.quests.push(newQuest());
+
+/* ---------- view ---------- */
+let S = 1, VW = 800, VH = 600, DPR = 1, stars = [];
+function resize() {
+  const w = cv.clientWidth || 800, h = cv.clientHeight || 600;
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR);
+  S = clamp(Math.min(w, h) / 560, .68, 1.3); VW = w / S; VH = h / S;
+  stars = []; for (let i = 0; i < 70; i++) stars.push([Math.random() * VW, Math.random() * VH, rnd(.6, 1.8), Math.random() * TAU]);
+  if (G) { G.hero.x = VW / 2; G.hero.y = VH * (G.demo ? .26 : .5); }
+}
+addEventListener('resize', resize);
+
+/* ---------- run state ---------- */
+let G = null, mode = 'menu', eid = 1;
+const aim = { x: 0, y: 0, hold: false, queued: 0, show: false };
+const m = k => save.meta[k] || 0;
+
+function newRun(demo) {
+  const hp = 3 + m('vit');
+  const g = {
+    demo: !!demo, t: 0, hero: { x: VW / 2, y: VH * (demo ? .26 : .5), r: 20, inv: 0 }, hp, maxHp: hp,
+    booms: [], enemies: [], orbs: [], parts: [], texts: [], shards: [], pulses: [],
+    up: {}, level: 1, xp: 0, pending: demo ? 0 : m('head'), rerolls: m('reroll'),
+    score: 0, combo: 0, comboT: 0, bestCombo: 0, kills: 0, cbKills: 0, gemsRun: 0,
+    wave: 0, waveT: 0, waveLen: 0, spawnT: 0, phase: 'break', breakT: 1.2, boss: null,
+    ease: 0, revived: false, shake: 0, throwCd: 0, flip: 1, orbA: 0, heartCd: 0, hint: !demo && save.runs < 2 ? 9 : 0,
+  };
+  for (const k in UP) g.up[k] = 0;
+  g.booms.push(mkBoom());
+  return g;
+}
+const mkBoom = () => ({ fly: false, t: 0, T: 1, dx: 1, dy: 0, L: 0, W: 0, x: 0, y: 0, rot: 0, hit: new Map(), shard: false, kills: 0, trail: [] });
+const st = () => {
+  const u = G.up;
+  return { range: 300 * (1 + .15 * u.range), size: 1 + .2 * u.size, spd: 1 + .12 * u.speed, dmg: 1 + u.sharp, arc: 1 + .25 * u.arc, mag: 70 * (1 + .5 * u.magnet) };
+};
+const need = l => Math.floor(3 + l * 2.5 + l * l * .35);
+const hpScale = w => 1 + (w - 1) * .13;
+
+/* ---------- effects ---------- */
+function burst(x, y, col, n, sp) {
+  if (reduced) n = Math.ceil(n / 3);
+  for (let i = 0; i < n && G.parts.length < 420; i++) {
+    const a = Math.random() * TAU, v = rnd(40, sp || 220);
+    G.parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rnd(.25, .6), max: .6, col, r: rnd(2, 4.5) });
+  }
+}
+function floatText(x, y, s, col, size) { G.texts.push({ x, y, s, col: col || C.sand, size: size || 15, life: .9 }); if (G.texts.length > 40) G.texts.shift(); }
+function banner(big, small) {
+  const b = $('banner'); b.innerHTML = ''; b.append(big);
+  if (small) { const s = document.createElement('small'); s.textContent = small; b.append(s); }
+  b.classList.remove('show'); void b.offsetWidth; b.classList.add('show');
+}
+function pulse(x, y, maxR, dmg, col, push) { G.pulses.push({ x, y, r: 10, maxR, dmg, col, push: push || 0, hit: new Set() }); }
+
+/* ---------- spawning ---------- */
+function spawnPos(a) {
+  const cx = VW / 2, cy = VH / 2, c = Math.cos(a), s = Math.sin(a);
+  const d = Math.min((cx + 30) / Math.abs(c || 1e-6), (cy + 30) / Math.abs(s || 1e-6), 520);
+  return [cx + c * d, cy + s * d];
+}
+function addEnemy(type, x, y) {
+  const d = ET[type], w = Math.max(1, G.wave);
+  const hp = Math.max(1, Math.round(d.hp * hpScale(w) * (type === 'boss' ? Math.pow(w / 5, 1.25) : 1)));
+  const e = { id: eid++, type, x, y, r: d.r, hp, maxHp: hp, spd: d.spd * (1 + Math.min(w, 30) * .02) * rnd(.9, 1.1), col: d.col,
+    slow: 0, flash: 0, born: 0, kx: 0, ky: 0, ph: Math.random() * TAU, orbCd: 0, t: 0 };
+  G.enemies.push(e); return e;
+}
+function spawn() {
+  if (G.enemies.length > 130) return;
+  const w = G.wave, pool = ['drift', 'drift', 'drift'];
+  if (w >= 2) pool.push('dart', 'dart');
+  if (w >= 3) pool.push('weave', 'weave');
+  if (w >= 4) pool.push('tank');
+  if (w >= 6) pool.push('split', 'split');
+  if (w >= 9) pool.push('tank', 'dart');
+  const a = Math.random() * TAU, r = Math.random();
+  if (w >= 3 && r < .12) {             // a cluster from one side
+    const type = pick(['drift', 'dart', 'weave']), n = 3 + Math.min(4, w / 4 | 0);
+    for (let i = 0; i < n; i++) { const p = spawnPos(a + rnd(-.25, .25)); addEnemy(type, p[0] + rnd(-20, 20), p[1] + rnd(-20, 20)); }
+  } else if (w >= 5 && r < .19) {      // a closing ring
+    const n = 7 + Math.min(7, w / 3 | 0);
+    for (let i = 0; i < n; i++) { const p = spawnPos(a + i / n * TAU); addEnemy('drift', p[0], p[1]); }
+  } else { const p = spawnPos(a); addEnemy(pick(pool), p[0], p[1]); }
+}
+function startWave() {
+  G.wave++; G.waveT = 0; G.waveLen = 20 + Math.min(G.wave, 10) * 1.5; G.spawnT = .4;
+  if (G.wave % 5 === 0) {
+    G.phase = 'boss'; const p = spawnPos(Math.random() * TAU); G.boss = addEnemy('boss', p[0], p[1]);
+    banner('Wave ' + G.wave, 'Something big is coming'); sfx.boss();
+  } else { G.phase = 'wave'; banner('Wave ' + G.wave); }
+  checkQuests();
+}
+function endWave() {
+  G.phase = 'break'; G.breakT = 3;
+  const bonus = 100 * G.wave; G.score += bonus;
+  banner('Wave ' + G.wave + ' clear', '+' + bonus + ' bonus');
+  for (const o of G.orbs) o.pull = true;
+}
+
+/* ---------- combat ---------- */
+function damage(e, dmg, back, b) {
+  if (e.dead) return;
+  e.hp -= dmg; e.flash = .12;
+  if (G.up.frost) e.slow = 2;
+  if (e.hp <= 0) { kill(e, back); if (b) b.kills++; }
+  else { sfx.hit(Math.min(G.combo, 6)); burst(e.x, e.y, e.col, 3, 120); }
+}
+function drop(type, x, y, v) {
+  const a = Math.random() * TAU, sp = rnd(30, 130);
+  G.orbs.push({ type, x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, v: v || 1, pull: false, t: 0 });
+  if (G.orbs.length > 260) G.orbs[0].pull = true;
+}
+function kill(e, back) {
+  e.dead = true; const d = ET[e.type];
+  G.kills++; if (back) G.cbKills++;
+  buzz(e.type === 'boss' ? 'HEAVY' : 'LIGHT'); G.combo++; G.comboT = 2.8; if (G.combo > G.bestCombo) G.bestCombo = G.combo;
+  const pts = Math.round(d.sc * (1 + G.combo * .1) * (back ? 2 : 1)); G.score += pts;
+  floatText(e.x, e.y - e.r, (back ? '↩ +' : '+') + pts, back ? C.amber : C.sand, back ? 19 : 15);
+  burst(e.x, e.y, e.col, 7 + e.r / 2); sfx.hit(G.combo);
+  for (let i = 0; i < d.xp; i++) drop('xp', e.x, e.y);
+  const gm = 1 + .2 * m('gem');
+  if (e.type === 'boss') {
+    for (let i = 0; i < Math.round(8 * gm); i++) drop('gem', e.x, e.y);
+    drop('heart', e.x, e.y); G.boss = null; G.shake = .5; sfx.big(); burst(e.x, e.y, C.amber, 40, 380);
+    banner('Boss down', 'Hearts and gems dropped');
+  } else {
+    if (Math.random() < (e.type === 'tank' ? .22 : .05) * gm) drop('gem', e.x, e.y);
+    if (G.hp < G.maxHp && G.heartCd <= 0 && Math.random() < .035 * (G.maxHp - G.hp)) { drop('heart', e.x, e.y); G.heartCd = 14; }
+  }
+  if (e.type === 'split') for (let i = 0; i < 2; i++) { const c = addEnemy('mini', e.x + rnd(-12, 12), e.y + rnd(-12, 12)); c.born = 1; const a = Math.random() * TAU; c.kx = Math.cos(a) * 160; c.ky = Math.sin(a) * 160; }
+  if ([10, 25, 50, 100, 200].includes(G.combo)) { const bonus = G.combo * 20; G.score += bonus; banner('Combo ×' + G.combo, '+' + bonus + ' bonus'); sfx.big(); }
+  checkQuests();
+}
+function hurt(e) {
+  const h = G.hero;
+  buzz('ERROR'); G.hp--; h.inv = 1.8; G.ease = 9; G.shake = .35; G.combo = 0; sfx.hurt();
+  pulse(h.x, h.y, 240, 0, C.coral, 520);
+  if (e && e.type !== 'boss') e.dead = true;
+  if (G.hp <= 0) {
+    if (!G.revived) {
+      G.revived = true; G.hp = Math.ceil(G.maxHp / 2); h.inv = 3.2;
+      pulse(h.x, h.y, 620, 999, C.amber, 300);
+      banner('Comeback!', 'One more chance this run'); sfx.big(); burst(h.x, h.y, C.amber, 50, 420);
+    } else endRun();
+  }
+}
+function gainXp(v) {
+  G.xp += v * (1 + .1 * m('xp'));
+  while (G.xp >= need(G.level)) { G.xp -= need(G.level); G.level++; G.pending++; }
+}
+function checkQuests() {
+  if (G.demo) return;
+  for (const q of save.quests) {
+    if (q.done) continue;
+    q.p = Math.max(q.p, Math.min(q.target, QT[q.type].v(G)));
+    if (q.p >= q.target) { q.done = true; save.gems += q.reward; sfx.gem(); banner('Quest complete', '+' + q.reward + ' gems'); persist(); }
+  }
+}
+
+/* ---------- throwing ---------- */
+function throwBoom(b) {
+  const h = G.hero, s = st();
+  let dx = aim.x - h.x, dy = aim.y - h.y, d = Math.hypot(dx, dy);
+  if (d < 1) { dx = 0; dy = -1; d = 1; }
+  b.dx = dx / d; b.dy = dy / d; b.L = clamp(d, 90, s.range);
+  G.flip = -G.flip; b.W = b.L * .42 * s.arc * G.flip;
+  b.T = (.5 + b.L / 650) / s.spd; b.t = 0; b.fly = true; b.hit.clear(); b.shard = false; b.kills = 0; b.trail.length = 0;
+  G.throwCd = .13; if (!G.demo) sfx.throw();
+}
+function boomPos(b, u, out) {
+  // leaf-shaped loop: leaves straight toward the target, bulges to one side, returns along the other
+  const sp = Math.sin(u * Math.PI), lx = b.L * sp, ly = b.W * Math.sin(u * TAU) * sp, h = G.hero;
+  out.x = h.x + b.dx * lx - b.dy * ly; out.y = h.y + b.dy * lx + b.dx * ly; return out;
+}
+
+/* ---------- update ---------- */
+function update(dt) {
+  const h = G.hero, s = st(); G.t += dt;
+  if (G.demo) { const a = G.t * .7; aim.x = h.x + Math.cos(a) * 230; aim.y = h.y + Math.sin(a) * 150; }
+  h.inv -= dt; G.throwCd -= dt; G.ease -= dt; G.heartCd -= dt; G.hint -= dt; aim.queued -= dt;
+  if (G.shake > 0) G.shake -= dt;
+  if (G.comboT > 0) { G.comboT -= dt; if (G.comboT <= 0) G.combo = 0; }
+
+  // waves
+  if (!G.demo) {
+    if (G.phase === 'break') { G.breakT -= dt; if (G.breakT <= 0) startWave(); }
+    else {
+      G.waveT += dt; G.spawnT -= dt;
+      if (G.spawnT <= 0) { spawn(); G.spawnT = Math.max(.25, 1.35 * Math.pow(.94, G.wave - 1)) * (G.ease > 0 ? 1.7 : 1) * (G.phase === 'boss' ? 1.9 : 1); }
+      if (G.phase === 'wave' ? G.waveT >= G.waveLen : !G.boss) endWave();
+      if (G.phase === 'boss' && G.boss && G.waveT % 5 < dt) for (let i = 0; i < 3; i++) addEnemy('drift', G.boss.x + rnd(-30, 30), G.boss.y + rnd(-30, 30));
+    }
+  }
+
+  // throw
+  if ((aim.hold || aim.queued > 0 || G.demo) && G.throwCd <= 0) {
+    const b = G.booms.find(b => !b.fly);
+    if (b) { throwBoom(b); aim.queued = 0; G.hint = Math.min(G.hint, 2.5); }
+  }
+
+  // boomerangs
+  const br = 16 * s.size;
+  for (const b of G.booms) {
+    if (!b.fly) continue;
+    b.t += dt; b.rot += dt * 22;
+    const u = Math.min(1, b.t / b.T), back = u >= .5 ? 2 : 1;
+    boomPos(b, u, b);
+    b.trail.push(b.x, b.y); if (b.trail.length > 16) b.trail.splice(0, 2);
+    if (back === 2 && !b.shard) {
+      b.shard = true;
+      if (G.up.shard) {
+        const n = 2 + G.up.shard, base = Math.atan2(b.dy, b.dx);
+        for (let i = 0; i < n; i++) { const a = base + (i / (n - 1) - .5) * 1.9; G.shards.push({ x: b.x, y: b.y, vx: Math.cos(a) * 430, vy: Math.sin(a) * 430, life: .55, dmg: Math.max(1, Math.ceil(s.dmg / 2)) }); }
+      }
+    }
+    for (const e of G.enemies) {
+      if (e.dead || (b.hit.get(e.id) | 0) & back) continue;
+      const dx = e.x - b.x, dy = e.y - b.y, rr = e.r + br;
+      if (dx * dx + dy * dy < rr * rr) { b.hit.set(e.id, (b.hit.get(e.id) | 0) | back); damage(e, s.dmg, back === 2, b); }
+    }
+    for (const o of G.orbs) if (!o.pull) { const dx = o.x - b.x, dy = o.y - b.y; if (dx * dx + dy * dy < (br + 12) * (br + 12)) o.pull = true; }
+    if (u >= 1) {
+      b.fly = false; if (!G.demo) sfx.tick();
+      if (G.up.echo) pulse(h.x, h.y, 70 + 28 * G.up.echo, Math.max(1, Math.ceil(s.dmg / 2)), C.aqua, 120);
+      if (b.kills >= 3) { const bonus = b.kills * b.kills * 5; G.score += bonus; floatText(h.x, h.y - 44, b.kills + ' in one throw  +' + bonus, C.aqua, 18); }
+    }
+  }
+
+  // guardian blades
+  G.orbA += dt * 3.2;
+  for (let i = 0; i < G.up.orbit; i++) {
+    const a = G.orbA + i / G.up.orbit * TAU, ox = h.x + Math.cos(a) * 64, oy = h.y + Math.sin(a) * 64;
+    for (const e of G.enemies) {
+      if (e.dead || e.orbCd > 0) continue;
+      const dx = e.x - ox, dy = e.y - oy, rr = e.r + 11;
+      if (dx * dx + dy * dy < rr * rr) { e.orbCd = .45; damage(e, 1 + (G.up.sharp >> 1), false); const d = Math.hypot(e.x - h.x, e.y - h.y) || 1; e.kx += (e.x - h.x) / d * 150; e.ky += (e.y - h.y) / d * 150; }
+    }
+  }
+
+  // shards
+  for (const p of G.shards) {
+    p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+    for (const e of G.enemies) { if (e.dead) continue; const dx = e.x - p.x, dy = e.y - p.y, rr = e.r + 6; if (dx * dx + dy * dy < rr * rr) { damage(e, p.dmg, false); p.life = 0; break; } }
+  }
+  G.shards = G.shards.filter(p => p.life > 0);
+
+  // pulses
+  for (const p of G.pulses) {
+    p.r += (p.maxR * 2.6 + 200) * dt;
+    for (const e of G.enemies) {
+      if (e.dead || p.hit.has(e.id)) continue;
+      const dx = e.x - p.x, dy = e.y - p.y, d = Math.hypot(dx, dy) || 1;
+      if (d < p.r + e.r) { p.hit.add(e.id); e.kx += dx / d * p.push; e.ky += dy / d * p.push; if (p.dmg) damage(e, e.type === 'boss' ? Math.min(p.dmg, Math.ceil(e.maxHp * .15)) : p.dmg, false); }
+    }
+  }
+  G.pulses = G.pulses.filter(p => p.r < p.maxR);
+
+  // enemies
+  const slowMul = 1 - (.25 + .1 * G.up.frost);
+  for (const e of G.enemies) {
+    if (e.dead) continue;
+    e.t += dt; e.born = Math.min(1, e.born + dt * 3); e.flash -= dt; e.slow -= dt; e.orbCd -= dt;
+    const dx = h.x - e.x, dy = h.y - e.y, d = Math.hypot(dx, dy) || 1, nx = dx / d, ny = dy / d;
+    let v = e.spd * (e.slow > 0 ? slowMul : 1) * e.born, vx = nx * v, vy = ny * v;
+    if (e.type === 'weave') { const w = Math.sin(e.t * 3.2 + e.ph) * v * 1.1; vx += -ny * w; vy += nx * w; }
+    e.x += (vx + e.kx) * dt; e.y += (vy + e.ky) * dt;
+    const k = Math.pow(.02, dt); e.kx *= k; e.ky *= k;
+    if (d < e.r + h.r * .8 && e.born >= 1) {
+      if (h.inv <= 0 && !G.demo) { hurt(e); if (mode !== 'play') return; }
+      if (e.type === 'boss') { e.kx = -nx * 420; e.ky = -ny * 420; }
+    }
+  }
+  G.enemies = G.enemies.filter(e => !e.dead);
+
+  // drops
+  for (const o of G.orbs) {
+    o.t += dt;
+    const dx = h.x - o.x, dy = h.y - o.y, d = Math.hypot(dx, dy) || 1;
+    if (o.pull || d < s.mag) { o.pull = true; const v = 380 + o.t * 500; o.x += dx / d * Math.min(d, v * dt); o.y += dy / d * Math.min(d, v * dt); }
+    else { o.x += o.vx * dt; o.y += o.vy * dt; const k = Math.pow(.03, dt); o.vx *= k; o.vy *= k; }
+    if (d < h.r + 8) {
+      o.dead = true;
+      if (o.type === 'xp') { gainXp(o.v); sfx.orb(); }
+      else if (o.type === 'gem') { G.gemsRun++; sfx.gem(); floatText(h.x, h.y - 30, '+1 gem', C.sky, 14); }
+      else if (G.hp < G.maxHp) { G.hp++; sfx.heal(); floatText(h.x, h.y - 30, '+1 heart', C.coral, 16); }
+      else { G.score += 250; floatText(h.x, h.y - 30, '+250', C.coral, 16); }
+    }
+  }
+  G.orbs = G.orbs.filter(o => !o.dead);
+
+  for (const p of G.parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= .94; p.vy *= .94; p.life -= dt; }
+  G.parts = G.parts.filter(p => p.life > 0);
+  for (const t of G.texts) { t.y -= 34 * dt; t.life -= dt; }
+  G.texts = G.texts.filter(t => t.life > 0);
+
+  if (G.pending > 0 && mode === 'play' && !G.demo) openLevelUp();
+}
+
+/* ---------- render ---------- */
+const tmp = { x: 0, y: 0 };
+function drawBoomShape(x, y, rot, sc, col) {
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot); ctx.scale(sc, sc);
+  ctx.beginPath(); ctx.moveTo(-15, 9); ctx.quadraticCurveTo(-13, -13, 11, -15); ctx.quadraticCurveTo(15, -11, 9, -9);
+  ctx.quadraticCurveTo(-5, -5, -9, 11); ctx.quadraticCurveTo(-13, 14, -15, 9); ctx.closePath();
+  ctx.fillStyle = col; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = C.amberDeep; ctx.stroke(); ctx.restore();
+}
+function drawEnemy(e, h) {
+  const sc = .4 + .6 * e.born, r = e.r * sc, a = Math.atan2(h.y - e.y, h.x - e.x);
+  ctx.save(); ctx.translate(e.x, e.y); ctx.globalAlpha = e.born;
+  ctx.fillStyle = e.flash > 0 ? '#fff' : e.col; ctx.beginPath();
+  if (e.type === 'dart') { ctx.rotate(a); ctx.moveTo(r * 1.4, 0); ctx.lineTo(-r, r); ctx.lineTo(-r * .5, 0); ctx.lineTo(-r, -r); ctx.rotate(-a); }
+  else if (e.type === 'weave') { ctx.moveTo(0, -r * 1.25); ctx.lineTo(r * 1.25, 0); ctx.lineTo(0, r * 1.25); ctx.lineTo(-r * 1.25, 0); }
+  else if (e.type === 'tank') { ctx.roundRect ? ctx.roundRect(-r, -r, r * 2, r * 2, r * .35) : ctx.rect(-r, -r, r * 2, r * 2); }
+  else if (e.type === 'boss') { for (let i = 0; i < 20; i++) { const rr = i % 2 ? r : r * 1.16, t = i / 20 * TAU + e.t * .4; ctx.lineTo(Math.cos(t) * rr, Math.sin(t) * rr); } }
+  else ctx.arc(0, 0, r, 0, TAU);
+  ctx.closePath(); ctx.fill();
+  if (e.type === 'split') { ctx.strokeStyle = 'rgba(0,0,0,.3)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(0, r); ctx.stroke(); }
+  if (e.slow > 0) { ctx.strokeStyle = C.sky; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, r + 3, 0, TAU); ctx.stroke(); }
+  // eyes look at the hero
+  const ex = Math.cos(a) * r * .28, ey = Math.sin(a) * r * .28, er = Math.max(2, r * .2);
+  ctx.fillStyle = '#231016';
+  ctx.beginPath(); ctx.arc(ex - Math.sin(a) * r * .32, ey + Math.cos(a) * r * .32, er, 0, TAU); ctx.arc(ex + Math.sin(a) * r * .32, ey - Math.cos(a) * r * .32, er, 0, TAU); ctx.fill();
+  if (e.maxHp > 3 && e.hp < e.maxHp) {
+    const w = r * 1.8; ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(-w / 2, -r - 12, w, 5);
+    ctx.fillStyle = e.type === 'boss' ? C.amber : C.sand; ctx.fillRect(-w / 2, -r - 12, w * Math.max(0, e.hp / e.maxHp), 5);
+  }
+  ctx.restore();
+}
+function render() {
+  const h = G.hero, s = st();
+  ctx.setTransform(DPR * S, 0, 0, DPR * S, 0, 0);
+  const bg = ctx.createRadialGradient(h.x, h.y, 40, h.x, h.y, Math.max(VW, VH) * .75);
+  bg.addColorStop(0, '#17414b'); bg.addColorStop(1, '#0b1f25');
+  ctx.fillStyle = bg; ctx.fillRect(0, 0, VW, VH);
+  if (G.shake > 0 && !reduced) ctx.translate(rnd(-1, 1) * G.shake * 16, rnd(-1, 1) * G.shake * 16);
+  ctx.fillStyle = C.sand;
+  for (const p of stars) { ctx.globalAlpha = .1 + .12 * Math.sin(G.t * .8 + p[3]); ctx.fillRect(p[0], p[1], p[2], p[2]); }
+  ctx.globalAlpha = 1;
+  // reach ring
+  ctx.strokeStyle = 'rgba(246,234,210,.09)'; ctx.lineWidth = 2; ctx.setLineDash([4, 12]);
+  ctx.beginPath(); ctx.arc(h.x, h.y, s.range, 0, TAU); ctx.stroke();
+  // aim preview
+  if ((aim.show || aim.hold) && !G.demo && mode === 'play') {
+    const b = { dx: 0, dy: -1, L: 0, W: 0 }; let dx = aim.x - h.x, dy = aim.y - h.y, d = Math.hypot(dx, dy) || 1;
+    b.dx = dx / d; b.dy = dy / d; b.L = clamp(d, 90, s.range); b.W = b.L * .42 * s.arc * -G.flip;
+    ctx.strokeStyle = 'rgba(255,178,62,.3)'; ctx.setLineDash([3, 9]); ctx.beginPath();
+    for (let i = 0; i <= 32; i++) { boomPos(b, i / 32, tmp); i ? ctx.lineTo(tmp.x, tmp.y) : ctx.moveTo(tmp.x, tmp.y); }
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  for (const p of G.pulses) { ctx.globalAlpha = Math.max(0, 1 - p.r / p.maxR) * .8; ctx.strokeStyle = p.col; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.stroke(); }
+  ctx.globalAlpha = 1;
+
+  for (const o of G.orbs) {
+    const bob = Math.sin(o.t * 5) * 1.5;
+    if (o.type === 'xp') { ctx.fillStyle = C.aqua; ctx.beginPath(); ctx.arc(o.x, o.y + bob, 4.5, 0, TAU); ctx.fill(); }
+    else if (o.type === 'gem') { ctx.fillStyle = C.sky; ctx.beginPath(); ctx.moveTo(o.x, o.y - 9 + bob); ctx.lineTo(o.x + 7, o.y + bob); ctx.lineTo(o.x, o.y + 9 + bob); ctx.lineTo(o.x - 7, o.y + bob); ctx.fill(); }
+    else { ctx.fillStyle = C.coral; ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('♥︎', o.x, o.y + bob); }
+  }
+  for (const e of G.enemies) drawEnemy(e, h);
+  ctx.fillStyle = C.amber;
+  for (const p of G.shards) { ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, TAU); ctx.fill(); }
+
+  // guardian
+  for (let i = 0; i < G.up.orbit; i++) { const a = G.orbA + i / G.up.orbit * TAU; drawBoomShape(h.x + Math.cos(a) * 64, h.y + Math.sin(a) * 64, G.orbA * 3, .6, C.sand); }
+
+  // hero
+  const blink = h.inv > 0 && Math.floor(G.t * 14) % 2;
+  ctx.globalAlpha = blink ? .35 : 1;
+  ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.beginPath(); ctx.ellipse(h.x, h.y + h.r * .95, h.r * .9, h.r * .3, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = C.sand; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.fill();
+  ctx.fillStyle = C.amber; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, .25, Math.PI - .25); ctx.closePath(); ctx.fill();
+  const la = Math.atan2(aim.y - h.y, aim.x - h.x), lx = Math.cos(la) * 5, ly = Math.sin(la) * 4 - 3;
+  ctx.fillStyle = C.ink; ctx.beginPath(); ctx.arc(h.x - 6 + lx, h.y + ly, 3, 0, TAU); ctx.arc(h.x + 6 + lx, h.y + ly, 3, 0, TAU); ctx.fill();
+  ctx.globalAlpha = 1;
+  const inHand = G.booms.filter(b => !b.fly).length;
+  for (let i = 0; i < inHand; i++) drawBoomShape(h.x + (i - (inHand - 1) / 2) * 15, h.y - h.r - 13, -.8, .42, C.amber);
+
+  // boomerangs
+  for (const b of G.booms) {
+    if (!b.fly) continue;
+    const t = b.trail; ctx.lineCap = 'round';
+    for (let i = 2; i < t.length; i += 2) { ctx.strokeStyle = `rgba(255,178,62,${i / t.length * .45})`; ctx.lineWidth = 12 * s.size * i / t.length; ctx.beginPath(); ctx.moveTo(t[i - 2], t[i - 1]); ctx.lineTo(t[i], t[i + 1]); ctx.stroke(); }
+    drawBoomShape(b.x, b.y, b.rot, s.size, b.t / b.T >= .5 ? '#ffd27a' : C.amber);
+  }
+
+  for (const p of G.parts) { ctx.globalAlpha = clamp(p.life / p.max, 0, 1); ctx.fillStyle = p.col; ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, TAU); ctx.fill(); }
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (const t of G.texts) { ctx.globalAlpha = clamp(t.life * 2.5, 0, 1); ctx.font = `${t.size}px "Lilita One","Arial Rounded MT Bold",sans-serif`; ctx.fillStyle = 'rgba(0,0,0,.5)'; ctx.fillText(t.s, t.x + 1, t.y + 2); ctx.fillStyle = t.col; ctx.fillText(t.s, t.x, t.y); }
+  ctx.globalAlpha = 1;
+  if (G.hint > 0 && mode === 'play') {
+    ctx.globalAlpha = clamp(G.hint, 0, 1) * .9; ctx.fillStyle = C.sand; ctx.font = '20px "Lilita One","Arial Rounded MT Bold",sans-serif';
+    ctx.fillText('Tap anywhere to throw', h.x, h.y + 70);
+    ctx.font = '600 14px Nunito,system-ui,sans-serif'; ctx.fillText('Hold to keep throwing. Don’t let them touch you.', h.x, h.y + 96); ctx.globalAlpha = 1;
+  }
+  if (G.hp === 1 && !G.demo && mode !== 'over') {
+    ctx.setTransform(DPR * S, 0, 0, DPR * S, 0, 0);
+    const v = ctx.createRadialGradient(VW / 2, VH / 2, Math.min(VW, VH) * .45, VW / 2, VH / 2, Math.max(VW, VH) * .75);
+    v.addColorStop(0, 'rgba(255,107,94,0)'); v.addColorStop(1, `rgba(255,107,94,${.2 + .08 * Math.sin(G.t * 4)})`);
+    ctx.fillStyle = v; ctx.fillRect(0, 0, VW, VH);
+  }
+}
+
+/* ---------- HUD ---------- */
+const hudCache = {};
+function setText(id, v) { if (hudCache[id] !== v) { hudCache[id] = v; $(id).textContent = v; } }
+function hud() {
+  const hk = G.hp + '/' + G.maxHp;
+  if (hudCache.hearts !== hk) { hudCache.hearts = hk; $('hearts').innerHTML = '♥︎'.repeat(Math.max(0, G.hp)) + '<span class="off">' + '♥︎'.repeat(Math.max(0, G.maxHp - G.hp)) + '</span>'; }
+  setText('score', G.score.toLocaleString());
+  setText('combo', G.combo > 1 ? 'Combo ×' + G.combo : '');
+  setText('gems', '◆ ' + (save.gems + G.gemsRun));
+  setText('lvl', 'Lv ' + G.level); setText('wave', 'Wave ' + Math.max(1, G.wave));
+  const w = Math.round(G.xp / need(G.level) * 100) + '%';
+  if (hudCache.xp !== w) { hudCache.xp = w; $('xpfill').style.width = w; }
+}
+
+/* ---------- screens ---------- */
+const screens = ['menu', 'levelup', 'pause', 'over', 'shop'];
+function show(name) {
+  mode = name;
+  for (const s of screens) $(s).hidden = s !== name;
+  $('hud').hidden = !(name === 'play' || name === 'levelup' || name === 'pause');
+}
+function questHTML() {
+  return save.quests.map(q => `<div class="quest${q.done ? ' done' : ''}"><span>${QT[q.type].s(q.target)}</span><b>${q.done ? 'Done' : '◆ ' + q.reward}</b><div class="bar"><i style="width:${Math.round(q.p / q.target * 100)}%"></i></div></div>`).join('');
+}
+function muteLabel() { const t = save.mute ? 'Sound off' : 'Sound on'; $('muteBtn').textContent = t; $('muteBtn2').textContent = t; }
+function toMenu() {
+  G = newRun(true); show('menu');
+  $('questList').innerHTML = questHTML(); muteLabel();
+  $('bestLine').textContent = save.best ? `Best ${save.best.toLocaleString()}  ·  Wave ${save.bestWave}  ·  ◆ ${save.gems}` : 'Beat back the swarm. Level up. See how far you get.';
+}
+function startRun() {
+  audioOn(); G = newRun(false); save.runs++; persist();
+  for (const k in hudCache) delete hudCache[k];
+  aim.hold = false; aim.queued = 0; aim.x = VW / 2; aim.y = VH / 2 - 100;
+  show('play');
+}
+function endRun() {
+  if (!G || G.demo) return;
+  const bonus = Math.round(G.wave * 2 * (1 + .2 * m('gem'))), earned = G.gemsRun + bonus;
+  checkQuests();
+  save.gems += earned;
+  const newBest = G.score > save.best;
+  if (newBest) save.best = G.score;
+  save.bestWave = Math.max(save.bestWave, G.wave);
+  $('overTitle').textContent = newBest && save.runs > 1 ? 'New best!' : 'Run over';
+  $('overStats').innerHTML = [['Score', G.score.toLocaleString()], ['Wave', G.wave], ['Defeated', G.kills], ['Best combo', '×' + G.bestCombo], ['Comebacks', G.cbKills], ['Gems earned', '◆ ' + earned]]
+    .map(r => `<div><span>${r[0]}</span><strong>${r[1]}</strong></div>`).join('');
+  $('questList2').innerHTML = questHTML();
+  save.quests = save.quests.map(q => q.done ? null : q).filter(Boolean);
+  while (save.quests.length < 3) save.quests.push(newQuest());
+  persist(); show('over');
+}
+
+let choices = [];
+function rollChoices() {
+  const avail = Object.keys(UP).filter(k => G.up[k] < UP[k].max);
+  for (let i = avail.length - 1; i > 0; i--) { const j = Math.random() * (i + 1) | 0; [avail[i], avail[j]] = [avail[j], avail[i]]; }
+  choices = avail.slice(0, 3).map(k => ({ k, n: UP[k].n, d: UP[k].d, i: UP[k].i, lv: G.up[k] ? 'Level ' + (G.up[k] + 1) : 'New' }));
+  const extra = [
+    { k: '_heal', n: 'Patch up', d: 'Restore one heart', i: UP.heart.i, lv: 'Bonus' },
+    { k: '_gems', n: 'Treasure', d: 'Gain 5 gems', i: ic(`<path d="M22 6 36 22 22 38 8 22Z" fill="${C.sky}" stroke="${C.sky}"/>`), lv: 'Bonus' },
+    { k: '_score', n: 'Showboat', d: '+1,000 score', i: ic(`<path d="M22 6l5 11 11 1-8 8 2 12-10-6-10 6 2-12-8-8 11-1Z" fill="${C.amber}" stroke="${C.amber}"/>`), lv: 'Bonus' }];
+  while (choices.length < 3) choices.push(extra[choices.length]);
+}
+function openLevelUp() {
+  rollChoices(); sfx.level(); buzz('SUCCESS'); show('levelup'); aim.hold = false;
+  $('luTitle').textContent = G.level === 1 ? 'Head start' : 'Level ' + G.level;
+  drawCards();
+}
+function drawCards() {
+  $('cards').innerHTML = choices.map((c, i) => `<button class="card" data-i="${i}">${c.i}<div><em>${c.lv}</em><strong>${c.n}</strong><span>${c.d}</span></div></button>`).join('');
+  const r = $('rerollBtn'); r.hidden = G.rerolls <= 0; r.textContent = `Reroll (${G.rerolls})`;
+}
+function choose(i) {
+  const c = choices[i]; if (!c || mode !== 'levelup') return;
+  if (c.k === '_heal') G.hp = Math.min(G.maxHp, G.hp + 1);
+  else if (c.k === '_gems') G.gemsRun += 5;
+  else if (c.k === '_score') G.score += 1000;
+  else {
+    G.up[c.k]++;
+    if (c.k === 'multi') G.booms.push(mkBoom());
+    if (c.k === 'heart') { G.maxHp++; G.hp = G.maxHp; }
+  }
+  G.pending--; G.hero.inv = Math.max(G.hero.inv, .8);
+  if (G.pending > 0) openLevelUp(); else show('play');
+}
+function drawShop() {
+  $('wallet').textContent = '◆ ' + save.gems;
+  $('shopList').innerHTML = Object.keys(META).map(k => {
+    const d = META[k], lv = m(k), max = d.cost.length, cost = d.cost[lv];
+    return `<div class="shopitem"><strong>${d.n}</strong><span>${d.d}</span><span class="pips">${'●'.repeat(lv)}${'○'.repeat(max - lv)}</span>
+      <button class="buy" data-k="${k}" ${lv >= max || save.gems < cost ? 'disabled' : ''}>${lv >= max ? 'Maxed' : '◆ ' + cost}</button></div>`;
+  }).join('');
+}
+let shopReturn = 'menu';
+function openShop(from) { shopReturn = from; drawShop(); show('shop'); }
+
+/* ---------- input ---------- */
+function setAim(ev) { const r = cv.getBoundingClientRect(); aim.x = (ev.clientX - r.left) / S; aim.y = (ev.clientY - r.top) / S; }
+cv.addEventListener('pointerdown', ev => { if (mode !== 'play') return; ev.preventDefault(); audioOn(); setAim(ev); aim.hold = true; aim.queued = .45; try { cv.setPointerCapture(ev.pointerId); } catch (e) {} });
+cv.addEventListener('pointermove', ev => { if (mode !== 'play') return; if (ev.pointerType === 'mouse' || aim.hold) { setAim(ev); aim.show = ev.pointerType === 'mouse'; } });
+const release = () => { aim.hold = false; };
+cv.addEventListener('pointerup', release); cv.addEventListener('pointercancel', release);
+cv.addEventListener('pointerleave', () => { aim.show = false; });
+cv.addEventListener('contextmenu', ev => ev.preventDefault());
+
+function pause() { if (mode === 'play') { aim.hold = false; muteLabel(); show('pause'); } }
+function toggleMute() { save.mute = !save.mute; persist(); muteLabel(); }
+$('playBtn').onclick = startRun; $('againBtn').onclick = startRun;
+$('pauseBtn').onclick = pause; $('resumeBtn').onclick = () => show('play');
+$('quitBtn').onclick = endRun; $('menuBtn').onclick = toMenu;
+$('muteBtn').onclick = toggleMute; $('muteBtn2').onclick = toggleMute;
+$('shopBtn').onclick = () => openShop('menu'); $('shopBtn2').onclick = () => openShop('over');
+$('shopBack').onclick = () => { if (shopReturn === 'over') show('over'); else toMenu(); };
+$('cards').onclick = ev => { const c = ev.target.closest('.card'); if (c) choose(+c.dataset.i); };
+$('rerollBtn').onclick = () => { if (G.rerolls > 0) { G.rerolls--; rollChoices(); drawCards(); } };
+$('shopList').onclick = ev => {
+  const b = ev.target.closest('.buy'); if (!b || b.disabled) return;
+  const k = b.dataset.k, cost = META[k].cost[m(k)];
+  if (save.gems >= cost) { save.gems -= cost; save.meta[k] = m(k) + 1; persist(); audioOn(); sfx.gem(); drawShop(); }
+};
+addEventListener('keydown', ev => {
+  if (ev.key === 'Escape' || ev.key === 'p' || ev.key === 'P') { if (mode === 'play') pause(); else if (mode === 'pause') show('play'); }
+  else if (mode === 'levelup' && ev.key >= '1' && ev.key <= '3') choose(+ev.key - 1);
+  else if ((ev.key === 'Enter' || ev.key === ' ') && (mode === 'menu' || mode === 'over') && document.activeElement === document.body) startRun();
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+addEventListener('blur', pause);
+
+/* ---------- loop ---------- */
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(.034, (now - last) / 1000); last = now;
+  if (mode === 'play' || mode === 'menu') update(dt);
+  render();
+  if (!G.demo) hud();
+  requestAnimationFrame(frame);
+}
+resize(); toMenu();
+plugin('Preferences', 'get', { key: KEY }).then(r => {   // restore the native copy if the web copy was cleared
+  try { const d = r && r.value && JSON.parse(r.value); if (d && (d.runs || 0) > (save.runs || 0)) { Object.assign(save, d); if (mode === 'menu') toMenu(); } } catch (e) {}
+});
+window.__comeback = { get G() { return G; }, get mode() { return mode; }, aim, save };
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
