@@ -1,5 +1,5 @@
-# Publishes the playable web version of the game (and the privacy policy) to GitHub Pages.
-name: Publish game to GitHub Pages
+# Publishes both games to GitHub Pages: Stack It Up! at the root, Comeback under /comeback/.
+name: Publish games to GitHub Pages
 
 on:
   push:
@@ -25,9 +25,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Assemble site
         run: |
-          mkdir _site
-          cp -r www/. _site/
-          cp docs/privacy.html _site/privacy.html
+          mkdir -p _site/comeback
+          # Stack It Up! stays at the site root
+          cp index.html _site/
+          cp -r assets _site/
+          # Comeback lives under /comeback/
+          cp -r www/. _site/comeback/
+          cp docs/privacy.html _site/comeback/privacy.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
