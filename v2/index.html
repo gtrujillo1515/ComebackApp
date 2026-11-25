@@ -66,6 +66,14 @@
   #name:focus { outline: 3px solid var(--red); outline-offset: 1px; }
   #save { font: inherit; font-weight: 900; font-size: 18px; color: #fff; background: var(--red); border: 3px solid var(--ink);
           border-radius: 12px; padding: 0 16px; cursor: pointer; box-shadow: 0 4px 0 var(--ink); }
+  .inp { width: 100%; min-width: 0; font: inherit; font-weight: 900; font-size: 20px; text-align: center; text-transform: uppercase;
+         letter-spacing: .08em; border: 3px solid var(--ink); border-radius: 12px; padding: 8px; color: var(--ink); background: #fff;
+         user-select: text; -webkit-user-select: text; }
+  .inp:focus { outline: 3px solid var(--red); outline-offset: 1px; }
+  .row { display: flex; gap: 8px; margin-top: 12px; }
+  .sbtn { font: inherit; font-weight: 900; font-size: 18px; color: #fff; background: var(--ink); border: 3px solid var(--ink);
+          border-radius: 12px; padding: 0 16px; cursor: pointer; }
+  .lbl { font-size: 11px; letter-spacing: .1em; font-weight: 900; opacity: .65; margin: 10px 0 4px; }
   #board { z-index: 5; }
   #list { list-style: none; margin: 10px 0 0; padding: 0; font-weight: 900; font-variant-numeric: tabular-nums; }
   #list li { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 10px; font-size: 16px; }
@@ -103,14 +111,37 @@
   <div class="overlay hidden" id="vsintro">
     <div class="card">
       <h2>Head to Head</h2>
-      <p>Seattle vs. Tacoma, on one screen.</p>
-      <ul class="how">
-        <li><i>👆</i><span>Each player taps their own half to drop. On a keyboard: <b>A</b> for Player 1, <b>L</b> for Player 2.</span></li>
-        <li><i>🍔</i><span>First to finish <b>3 burgers</b> wins.</span></li>
-        <li><i>💥</i><span>Miss completely and that burger starts over on a fresh bun.</span></li>
-      </ul>
-      <button class="play" id="vsGo">START</button>
+      <p>First to finish <b>3 burgers</b> wins. Miss completely and that burger starts over on a fresh bun.</p>
+      <button class="play" id="vsOnline">PLAY ONLINE</button>
+      <button class="play alt" id="vsGo">SAME SCREEN</button>
+      <div class="hint">Same screen: each player taps their own half (A and L on a keyboard).</div>
       <button class="ghost" id="vsBack">BACK</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="online">
+    <div class="card">
+      <h2>Play Online</h2>
+      <div class="lbl">YOUR NAME</div>
+      <input class="inp" id="oname" type="text" maxlength="10" placeholder="PLAYER" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Your name">
+      <button class="play" id="quick">QUICK MATCH</button>
+      <button class="play alt" id="create">CHALLENGE A FRIEND</button>
+      <div class="lbl">HAVE A ROOM CODE?</div>
+      <div class="row" style="margin-top:0">
+        <input class="inp" id="code" type="text" maxlength="4" placeholder="CODE" autocomplete="off" autocapitalize="characters" spellcheck="false" aria-label="Room code">
+        <button class="sbtn" id="joinBtn">JOIN</button>
+      </div>
+      <div class="hint" id="onMsg" style="color:var(--red);opacity:1"></div>
+      <button class="ghost" id="onBack">BACK</button>
+    </div>
+  </div>
+
+  <div class="overlay hidden" id="waiting">
+    <div class="card">
+      <h2 id="wTitle">Finding an opponent…</h2>
+      <div class="big" id="wCode" hidden>ABCD</div>
+      <p id="wMsg"></p>
+      <button class="ghost" id="wCancel">CANCEL</button>
     </div>
   </div>
 
@@ -153,6 +184,7 @@
     <div class="card">
       <h2 id="vsTitle">Player 1 Wins!</h2>
       <p id="vsSub"></p>
+      <div class="hint" id="vsMsg" style="color:var(--red);opacity:1"></div>
       <button class="play" id="rematch">REMATCH</button>
       <button class="ghost" id="vsMenu">MENU</button>
     </div>
@@ -163,7 +195,7 @@
       <h2>🏆 High Scores</h2>
       <ol id="list"></ol>
       <p id="empty" hidden>No scores yet. Be the first!</p>
-      <div class="hint">Scores on this device</div>
+      <div class="hint" id="boardNote"></div>
       <button class="ghost" id="boardClose">BACK</button>
     </div>
   </div>
@@ -564,8 +596,8 @@
 
   // ---------- one player's game ----------
   class Game {
-    constructor(mode, player) {
-      this.mode = mode; this.player = player; this.t = 0; this.side = 1;
+    constructor(mode, player, remote = false) {
+      this.mode = mode; this.player = player; this.remote = remote; this.label = ''; this.t = 0; this.side = 1;
       this.view = { x: 0, y: 0, w: 100, h: 100 }; this.scale = 1; this.VH = 700;
       this.reset();
     }
@@ -581,7 +613,18 @@
       this.layers = []; this.debris = []; this.parts = []; this.pops = [];
       this.lvBurgers = 0; this.lvPlaced = 0; this.stackH = 0; this.cam = 0; this.shake = 0; this.p = 0; this.cur = null;
       this.pushBun((VW - BASE_W) / 2);
-      this.state = 'play'; this.spawn();
+      if (this.remote) { this.state = 'remote'; this.inBurger = 0; } else { this.state = 'play'; this.spawn(); }
+    }
+    // Online play: a compact copy of this stack, sent to the opponent and drawn in their corner view.
+    snapshot() { return { b: this.lvBurgers, l: this.layers.map(l => [TYPES.indexOf(l.type), Math.round(l.x), Math.round(l.w)]) }; }
+    applySnap(snap) {
+      if (!snap || !Array.isArray(snap.l) || !snap.l.length) return;
+      const had = this.layers.length; let base = 0;
+      this.layers = snap.l.slice(0, 400).map((e, i) => {
+        const type = TYPES[e[0]] || 'patty', l = { type, x: clamp(+e[1] || 0, 0, VW), w: clamp(+e[2] || 0, 0, BASE_W), h: HEIGHT[type], base, squash: i >= had ? 1 : 0 };
+        base += l.h; return l;
+      });
+      this.stackH = base; this.lvBurgers = clamp(+snap.b || 0, 0, VS_GOAL);
     }
     demo() {
       this.layers = []; this.stackH = 0; this.cur = null; this.state = 'demo';
@@ -759,23 +802,32 @@
       ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(34,34,34,.65)'; ctx.font = `900 10px ${FONT}`; ctx.fillText(label, x + w / 2, 25);
       ctx.fillStyle = color || INK; ctx.font = `900 21px ${FONT}`; ctx.fillText(val, x + w / 2, 48);
     }
-    timerBar(y, h) {
-      rr(20, y, 360, h, h / 2); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
+    timerBar(y, h, x = 20, w = 360) {
+      rr(x, y, w, h, h / 2); ctx.fillStyle = 'rgba(0,0,0,.3)'; ctx.fill();
       if (this.state === 'play' && this.cur) {
         const f = clamp(this.tLeft / this.tMax, 0, 1);
-        if (f > 0.02) { rr(20, y, 360 * f, h, h / 2); ctx.fillStyle = f < 0.3 ? (Math.sin(this.t * 24) > 0 ? '#ff5a4a' : RED) : '#fff'; ctx.fill(); }
+        if (f > 0.02) { rr(x, y, w * f, h, h / 2); ctx.fillStyle = f < 0.3 ? (Math.sin(this.t * 24) > 0 ? '#ff5a4a' : RED) : '#fff'; ctx.fill(); }
       }
-      rr(20, y, 360, h, h / 2); ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke();
+      rr(x, y, w, h, h / 2); ctx.lineWidth = 2; ctx.strokeStyle = INK; ctx.stroke();
+    }
+    pips(cx, y, r, gap) {
+      for (let i = 0; i < VS_GOAL; i++) {
+        const x = cx + (i - (VS_GOAL - 1) / 2) * gap;
+        ctx.beginPath(); ctx.arc(x, y, r, 0, 7);
+        ctx.fillStyle = i < this.lvBurgers ? '#ffc72c' : 'rgba(255,255,255,.55)'; ctx.fill(); ctx.lineWidth = r / 5; ctx.strokeStyle = INK; ctx.stroke();
+        if (i < this.lvBurgers) { ctx.font = `${r * 1.1}px sans-serif`; ctx.textAlign = 'center'; ctx.fillText('🍔', x, y + r * 0.4); }
+      }
     }
     hud() {
+      if (app.mode === 'online') {
+        if (this.remote) { outlined(this.label, VW / 2, 80, 58, '#ffc72c', 12); this.pips(VW / 2, 150, 36, 96); return; }
+        outlined(this.label, 134, 38, 24, '#fff', 5); this.pips(134, 66, 14, 40); this.timerBar(90, 12, 12, 244);
+        return;
+      }
       if (this.mode === 'versus') {
         outlined('PLAYER ' + (this.player + 1), VW / 2, 52, 40, this.player ? '#ffc72c' : '#fff', 8);
         outlined(this.L.name.toUpperCase(), VW / 2, 82, 20, '#fff', 5);
-        for (let i = 0; i < VS_GOAL; i++) {
-          ctx.beginPath(); ctx.arc(VW / 2 + (i - (VS_GOAL - 1) / 2) * 56, 122, 20, 0, 7);
-          ctx.fillStyle = i < this.lvBurgers ? '#ffc72c' : 'rgba(255,255,255,.55)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.stroke();
-          if (i < this.lvBurgers) { ctx.font = '22px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('🍔', VW / 2 + (i - (VS_GOAL - 1) / 2) * 56, 130); }
-        }
+        this.pips(VW / 2, 122, 20, 56);
         this.timerBar(156, 18);
         return;
       }
@@ -788,7 +840,7 @@
   }
 
   // ---------- app ----------
-  const OVERLAYS = ['menu', 'vsintro', 'levelup', 'over', 'vsover', 'board', 'paused'];
+  const OVERLAYS = ['menu', 'vsintro', 'online', 'waiting', 'levelup', 'over', 'vsover', 'board', 'paused'];
   const show = id => { OVERLAYS.forEach(o => $(o).classList.toggle('hidden', o !== id)); };
   let games = [new Game('solo', 0)];
   let pending = false;
@@ -798,10 +850,14 @@
       const r = stage.getBoundingClientRect();
       dpr = Math.min(window.devicePixelRatio || 1, 2.5); CW = r.width; CH = r.height;
       cv.width = Math.round(CW * dpr); cv.height = Math.round(CH * dpr);
-      if (games.length === 2) { games[0].setView(0, 0, CW / 2, CH); games[1].setView(CW / 2, 0, CW / 2, CH); }
-      else games[0].setView(0, 0, CW, CH);
+      if (this.mode === 'versus' && games.length === 2) { games[0].setView(0, 0, CW / 2, CH); games[1].setView(CW / 2, 0, CW / 2, CH); }
+      else {
+        games[0].setView(0, 0, CW, CH);
+        if (games[1]) { const pw = Math.min(CW * 0.32, 180); games[1].setView(CW - pw - 8, 8, pw, Math.min(CH * 0.34, pw * 1.8)); }   // opponent's corner view
+      }
     },
     menu() {
+      net.leave();
       this.state = 'menu'; this.mode = 'solo'; wrap.classList.remove('vs');
       games = [new Game('solo', 0)]; games[0].demo(); this.layout(); show('menu'); this.changed();
     },
@@ -814,6 +870,33 @@
       audio(); this.mode = 'versus'; wrap.classList.add('vs');
       games = [new Game('versus', 0), new Game('versus', 1)]; this.layout(); games.forEach(g => g.startLevel(0));
       this.state = 'play'; show(null); this.changed();
+    },
+    startOnline(host) {
+      audio(); this.mode = 'online'; wrap.classList.remove('vs');
+      games = [new Game('versus', host ? 0 : 1), new Game('versus', host ? 1 : 0, true)];
+      games[0].label = net.name; games[1].label = net.oppName();
+      this.layout(); games[0].state = 'hold'; games[0].cur = null;
+      $('rematch').disabled = false; $('rematch').style.opacity = 1;
+      this.state = 'countdown'; this.count = 3.4; this.beat = 0; $('vsMsg').textContent = ''; show(null); this.changed();
+    },
+    onlineEnd(win, why) {
+      if (this.mode !== 'online' || this.state === 'vswon' || this.state === 'vsover') return;
+      this.state = 'vswon'; net.phase = 'done'; win ? sfx.level() : sfx.over();
+      games[0].cur = null; if (!win) games[0].state = 'lost';
+      const me = games[0].lvBurgers, them = games[1].lvBurgers, opp = net.oppName();
+      setTimeout(() => {
+        if (this.state !== 'vswon') return;
+        this.state = 'vsover';
+        $('vsTitle').textContent = win ? '🏆 You Win!' : 'You Lose';
+        $('vsSub').textContent = why || (win ? 'You beat ' + opp + ', ' + me + ' burgers to ' + them + '.' : opp + ' finished ' + VS_GOAL + ' burgers first. You had ' + me + '.');
+        $('rematch').disabled = !!why; $('rematch').style.opacity = why ? .4 : 1;
+        show('vsover');
+      }, 1300);
+    },
+    oppLeft() {
+      if (this.mode !== 'online') return;
+      if (this.state === 'countdown' || this.state === 'play') this.onlineEnd(true, 'Your opponent left the match.');
+      else if (this.state === 'vsover' || this.state === 'vswon') { $('vsMsg').textContent = 'Your opponent left.'; $('rematch').disabled = true; $('rematch').style.opacity = .4; }
     },
     levelClear(g) {
       this.state = 'levelup'; sfx.level();
@@ -841,7 +924,7 @@
         if (isBest) { best = g.score; store.set('stacks2_best', best); }
         $('finalScore').textContent = g.score; $('fLevel').textContent = g.level + 1; $('fBurgers').textContent = g.burgers; $('fCombo').textContent = g.bestCombo;
         $('rank').textContent = rank(g); $('newBest').hidden = !isBest || g.score === 0;
-        const b = loadBoard(); $('nameMsg').textContent = '';
+        const b = currentBoard(); $('nameMsg').textContent = '';
         pending = g.score > 0 && (b.length < BOARD_MAX || g.score > b[b.length - 1].s);
         $('entry').hidden = !pending;
         if (pending) {
@@ -852,6 +935,8 @@
       }, 900);
     },
     versusWon(g) {
+      if (this.mode === 'online') { net.send('won', {}); net.send('state', games[0].snapshot()); return this.onlineEnd(true); }
+      $('rematch').disabled = false; $('rematch').style.opacity = 1; $('vsMsg').textContent = '';
       this.state = 'vswon'; sfx.level();
       games.forEach(o => { if (o !== g) { o.state = 'lost'; o.cur = null; } });
       setTimeout(() => {
@@ -864,6 +949,7 @@
       }, 1500);
     },
     pause(force) {
+      if (this.mode === 'online') return;                 // no pausing a live match
       if (this.state === 'play' && force !== false) { this.state = 'paused'; show('paused'); }
       else if (this.state === 'paused' && force !== true) { this.state = 'play'; show(null); last = performance.now(); }
       this.changed();
@@ -874,7 +960,86 @@
       $('freshN').textContent = g.fresh;
       fb.disabled = !(this.state === 'play' && g.state === 'play' && g.fresh > 0 && g.top.w < BASE_W);
       fb.classList.toggle('ready', !fb.disabled && g.top.w < BASE_W * 0.4);
+      $('pause').style.visibility = this.mode === 'online' ? 'hidden' : 'visible';
+      if (this.mode === 'online' && (this.state === 'play' || this.state === 'countdown')) net.send('state', g.snapshot());
     }
+  };
+
+  // ---------- online play (Supabase Realtime: live messages between two players, nothing is stored) ----------
+  const SB_URL = 'https://lybrtzvzanuqhazmurez.supabase.co';
+  const SB_KEY = 'sb_publishable_QBzMagUyJATpE3YsjCQNJw_55_lUWXs';            // publishable key: safe to ship in the page
+  const SB_LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js';
+  const TYPES = Object.keys(HEIGHT);
+  const metas = ch => { const st = ch.presenceState(); return Object.keys(st).map(k => Object.assign({}, st[k][0], { id: k })).sort((a, b) => (a.t || 0) - (b.t || 0) || (a.id < b.id ? -1 : 1)); };
+  const net = {
+    sb: null, ch: null, lobby: null, code: '', opp: null, host: false, phase: 'idle', meAgain: false, oppAgain: false, timers: [],
+    id: Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4), name: 'PLAYER',
+    oppName() { return (this.opp && cleanName(this.opp.name)) || 'OPPONENT'; },
+    lib() {
+      return new Promise((res, rej) => {
+        if (this.sb) return res();
+        const done = () => { try { this.sb = window.supabase.createClient(SB_URL, SB_KEY); res(); } catch (e) { rej(e); } };
+        if (window.supabase) return done();
+        const el = document.createElement('script'); el.src = SB_LIB; el.onload = done; el.onerror = () => rej(new Error('offline')); document.head.appendChild(el);
+      });
+    },
+    later(fn, ms) { this.timers.push(setTimeout(fn, ms)); },
+    drop(key) { const c = this[key]; if (c) { this[key] = null; try { this.sb.removeChannel(c); } catch (e) {} } },
+    leave() { this.timers.forEach(clearTimeout); this.timers = []; this.drop('ch'); this.drop('lobby'); this.phase = 'idle'; this.opp = null; this.meAgain = this.oppAgain = false; },
+    send(event, payload) { if (this.ch) { try { this.ch.send({ type: 'broadcast', event, payload }); } catch (e) {} } },
+    // Quick match: everyone waiting sits in one lobby; the two who have waited longest pair off into a private room.
+    async quick() {
+      await this.lib(); this.leave(); this.phase = 'lobby';
+      const t = Date.now(), lb = this.lobby = this.sb.channel('sb2-lobby', { config: { presence: { key: this.id } } });
+      const go = room => { this.phase = 'pairing'; this.later(() => this.drop('lobby'), 3000); this.later(() => { if (this.phase === 'room') this.quick().catch(ui.fail); }, 12000); this.room(room); };
+      lb.on('presence', { event: 'sync' }, () => {
+        if (this.phase !== 'lobby' || this.lobby !== lb) return;
+        const all = metas(lb), inv = all.find(m => m.with === this.id && m.room);
+        if (inv) return go(inv.room);
+        const free = all.filter(m => !m.room), i = free.findIndex(m => m.id === this.id), mate = i < 0 ? null : free[i ^ 1];
+        if (!mate) return;
+        const room = 'q' + [this.id, mate.id].sort().map(v => v.slice(0, 6)).join('');
+        lb.track({ t, room, with: mate.id }); go(room);
+      }).subscribe(st => { if (st === 'SUBSCRIBED') lb.track({ t }); else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') ui.fail(); });
+    },
+    room(code) {
+      this.drop('ch'); this.code = code; this.opp = null; if (this.phase !== 'pairing') this.phase = 'room';
+      const t = Date.now(), ch = this.ch = this.sb.channel('sb2-room-' + code, { config: { broadcast: { self: false }, presence: { key: this.id } } });
+      this.phase = 'room';
+      ch.on('presence', { event: 'sync' }, () => { if (this.ch === ch) this.sync(); })
+        .on('broadcast', { event: 'start' }, () => this.onStart())
+        .on('broadcast', { event: 'state' }, m => { if (app.mode === 'online' && games[1]) games[1].applySnap(m.payload); })
+        .on('broadcast', { event: 'won' }, () => app.onlineEnd(false))
+        .on('broadcast', { event: 'again' }, () => { this.oppAgain = true; ui.again(); this.tryAgain(); })
+        .subscribe(st => { if (st === 'SUBSCRIBED') ch.track({ t, name: this.name }); else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT') ui.fail(); });
+    },
+    sync() {
+      const list = metas(this.ch);
+      if (!list.some(m => m.id === this.id)) return;
+      if (this.phase !== 'room') {                        // already matched: only watch for the opponent leaving
+        if (this.opp && !list.some(m => m.id === this.opp.id)) { this.phase = 'room'; app.oppLeft(); }
+        return;
+      }
+      if (list.length > 2) return ui.full();
+      const other = list.find(m => m.id !== this.id);
+      if (!other) return;
+      this.opp = other; this.host = this.id < other.id; this.phase = 'match';
+      if (this.host) this.later(() => this.begin(), 700);
+    },
+    begin() { this.send('start', {}); this.later(() => this.send('start', {}), 900); this.onStart(); },
+    onStart() {
+      if (this.phase !== 'match' && this.phase !== 'done') return;
+      this.phase = 'playing'; this.meAgain = this.oppAgain = false; app.startOnline(this.host);
+    },
+    again() { if (this.phase !== 'done') return; this.meAgain = true; this.send('again', {}); ui.again(); this.tryAgain(); },
+    tryAgain() { if (this.phase === 'done' && this.meAgain && this.oppAgain && this.host) this.begin(); }
+  };
+  const ui = {
+    fail() { net.leave(); if (app.mode === 'online') app.menu(); $('onMsg').textContent = "Couldn't connect. Check your connection and try again."; show('online'); },
+    full() { net.leave(); $('onMsg').textContent = 'That room already has two players.'; show('online'); },
+    again() { if (app.state === 'vsover' || app.state === 'vswon') $('vsMsg').textContent = net.meAgain ? 'Waiting for your opponent…' : 'Your opponent wants a rematch!'; },
+    wait(title, code, msg) { $('wTitle').textContent = title; $('wCode').hidden = !code; $('wCode').textContent = code || ''; $('wMsg').textContent = msg; show('waiting'); },
+    name() { const n = cleanName($('oname').value); net.name = n && !isRude(n) ? n : 'PLAYER'; if (n && !isRude(n)) store.set('stacks_name', n); $('onMsg').textContent = ''; }
   };
 
   function rank(g) {
@@ -882,52 +1047,83 @@
     return g.level === 2 ? 'Mountain Guide' : g.level === 1 ? (g.score < 3000 ? 'Grill Master' : 'Stack Captain') : g.score < 300 ? 'Trainee' : g.score < 900 ? 'Fry Cook' : 'Line Cook';
   }
 
-  // ---------- leaderboard (this device) ----------
-  const BOARD_MAX = 10;
+  // ---------- leaderboard (shared through Supabase, with this device as the fallback) ----------
+  const BOARD_MAX = 10, API = SB_URL + '/rest/v1/scores_v2';
+  const HDRS = { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json' };
+  let remote = null;
   function loadBoard() {
     try { const b = JSON.parse(store.get('stacks2_board', '[]')); return Array.isArray(b) ? b.filter(e => e && typeof e.s === 'number') : []; }
     catch (e) { return []; }
   }
-  const cleanName = v => (v || '').toUpperCase().replace(/[^A-Z0-9 .'&-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10);
+  async function fetchRemote() {
+    try {
+      const r = await fetch(API + '?select=name,score,burgers,level&order=score.desc,created_at.asc&limit=' + BOARD_MAX, { headers: HDRS, cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      remote = (await r.json()).map(e => ({ n: String(e.name), s: +e.score, b: +e.burgers || 0, l: +e.level || 1 }));
+      return remote;
+    } catch (e) { return null; }
+  }
+  const currentBoard = () => remote || loadBoard();
+  function cleanName(v) { return (v || '').toUpperCase().replace(/[^A-Z0-9 .'&-]/g, '').replace(/\s+/g, ' ').trim().slice(0, 10); }
   const RUDE = ['FUCK', 'FUK', 'SHIT', 'BITCH', 'CUNT', 'DICK', 'COCK', 'PUSSY', 'NIGG', 'NIGA', 'FAG', 'SLUT', 'WHORE', 'RAPE', 'NAZI', 'PORN', 'PENIS', 'VAGINA', 'ASSHOLE', 'BASTARD', 'TITS', 'CUM', 'SEX'];
   function isRude(n) {
     const t = n.replace(/0/g, 'O').replace(/1/g, 'I').replace(/3/g, 'E').replace(/4/g, 'A').replace(/5/g, 'S').replace(/7/g, 'T').replace(/[^A-Z]/g, '');
     return RUDE.some(w => t.includes(w));
   }
   let boardBack = 'menu';
-  function showBoard(me, back) {
-    boardBack = back;
-    const list = $('list'), b = loadBoard(); list.textContent = '';
+  function renderBoard(b, me, note) {
+    const list = $('list'); list.textContent = '';
+    let marked = false;
     b.forEach((e, i) => {
-      const li = document.createElement('li'); if (me && e.t === me) li.className = 'me';
+      const li = document.createElement('li');
+      if (me && !marked && e.n === me.n && e.s === me.s) { li.className = 'me'; marked = true; }
       [['pos', (i + 1) + '.'], ['nm', e.n], ['bg', 'L' + (e.l || 1) + ' 🍔' + (e.b || 0)], ['sc', e.s]].forEach(([c, t]) => {
         const sp = document.createElement('span'); sp.className = c; sp.textContent = t; li.appendChild(sp);
       });
       list.appendChild(li);
     });
-    $('empty').hidden = b.length > 0;
-    show('board');
+    $('empty').hidden = b.length > 0 || note === 'Loading…';
+    $('boardNote').textContent = note;
   }
-  function saveScore() {
+  async function showBoard(me, back) {
+    boardBack = back; show('board');
+    renderBoard(remote || [], me, 'Loading…');
+    const b = await fetchRemote();
+    if (b) renderBoard(b, me, 'All players');
+    else renderBoard(loadBoard(), me, "Couldn't reach the shared leaderboard. Showing this device's scores.");
+  }
+  async function saveScore() {
     if (!pending) return;
     const n = cleanName($('name').value) || 'AAA';
     if (isRude(n)) { $('nameMsg').textContent = 'Please pick a different name.'; return; }
     pending = false;
-    const g = games[0], t = Date.now(), b = loadBoard();
-    b.push({ n, s: g.score, b: g.burgers, l: g.level + 1, t }); b.sort((x, y) => y.s - x.s || x.t - y.t);
+    const g = games[0], me = { n, s: g.score, b: g.burgers, l: g.level + 1, t: Date.now() }, b = loadBoard();
+    b.push(me); b.sort((x, y) => y.s - x.s || x.t - y.t);
     store.set('stacks2_board', JSON.stringify(b.slice(0, BOARD_MAX))); store.set('stacks_name', n);
     $('entry').hidden = true; $('name').blur();
-    showBoard(t, 'over');
+    try { await fetch(API, { method: 'POST', headers: Object.assign({ Prefer: 'return=minimal' }, HDRS), body: JSON.stringify({ name: n, score: me.s, burgers: me.b, level: me.l }) }); }
+    catch (e) {}
+    showBoard(me, 'over');
   }
+  fetchRemote();
 
   // ---------- loop ----------
   let last = performance.now();
   function frame(now) {
     const dt = Math.min(0.033, (now - last) / 1000); last = now;
     if (app.state !== 'paused') for (const g of games) g.update(dt);
+    if (app.state === 'countdown') {
+      const before = Math.ceil(app.count); app.count -= dt;
+      if (Math.ceil(app.count) !== before && app.count > 0) beep(440, 0.1, 'square', 0.08);
+      if (app.count <= 0) { app.state = 'play'; beep(880, 0.25, 'square', 0.1); games[0].state = 'play'; games[0].spawn(); app.changed(); }
+    }
+    if (app.mode === 'online' && app.state === 'play' && (app.beat += dt) > 2) { app.beat = 0; net.send('state', games[0].snapshot()); }   // resend in case a message was lost
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     for (const g of games) g.render();
-    if (games.length === 2) { ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.fillStyle = INK; ctx.fillRect(CW / 2 - 2, 0, 4, CH); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (app.mode === 'versus' && games.length === 2) { ctx.fillStyle = INK; ctx.fillRect(CW / 2 - 2, 0, 4, CH); }
+    if (app.mode === 'online' && games[1]) { const v = games[1].view; ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.strokeRect(v.x, v.y, v.w, v.h); }
+    if (app.state === 'countdown') outlined(app.count > 3 ? 'READY' : String(Math.ceil(app.count)), CW / 2, CH * 0.45, app.count > 3 ? 54 : 110, '#fff', 10);
     requestAnimationFrame(frame);
   }
 
@@ -939,7 +1135,7 @@
     for (const g of games) if (x >= g.view.x && x < g.view.x + g.view.w) g.drop();
   });
   addEventListener('keydown', e => {
-    if (e.target && e.target.tagName === 'INPUT') { if (e.code === 'Enter' || e.code === 'NumpadEnter') saveScore(); return; }
+    if (e.target && e.target.tagName === 'INPUT') { if ((e.code === 'Enter' || e.code === 'NumpadEnter') && e.target.id === 'name') saveScore(); return; }
     if (e.code === 'KeyP' || e.code === 'Escape') return app.pause();
     if (e.repeat || app.state !== 'play') return;
     if (app.mode === 'versus') {
@@ -950,7 +1146,28 @@
   });
   $('solo').onclick = $('again').onclick = () => app.startSolo();
   $('versus').onclick = () => show('vsintro');
-  $('vsGo').onclick = $('rematch').onclick = () => app.startVersus();
+  $('vsGo').onclick = () => app.startVersus();
+  $('rematch').onclick = () => { if (app.mode === 'online') net.again(); else app.startVersus(); };
+  $('vsOnline').onclick = () => { $('oname').value = store.get('stacks_name', ''); $('onMsg').textContent = ''; show('online'); };
+  $('onBack').onclick = () => { net.leave(); show('vsintro'); };
+  $('wCancel').onclick = () => { net.leave(); show('online'); };
+  $('quick').onclick = () => {
+    ui.name(); ui.wait('Finding an opponent…', '', 'Waiting for another player to tap Quick Match. To play a specific friend, go back and use Challenge a Friend.');
+    net.quick().catch(ui.fail);
+  };
+  $('create').onclick = () => {
+    ui.name();
+    const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZ', code = Array.from({ length: 4 }, () => abc[Math.random() * abc.length | 0]).join('');
+    ui.wait('Room code', code, 'Your friend opens the game, taps Head to Head, then Play Online, types this code and taps Join.');
+    net.lib().then(() => { net.leave(); net.room('c' + code); }).catch(ui.fail);
+  };
+  $('joinBtn').onclick = () => {
+    ui.name();
+    const code = $('code').value.toUpperCase().replace(/[^A-Z]/g, '');
+    if (code.length !== 4) { $('onMsg').textContent = 'Enter the 4-letter room code.'; return; }
+    ui.wait('Joining room ' + code + '…', '', 'Waiting for the other player. Check the code if this takes more than a few seconds.');
+    net.lib().then(() => { net.leave(); net.room('c' + code); }).catch(ui.fail);
+  };
   $('vsBack').onclick = $('vsMenu').onclick = $('overMenu').onclick = () => app.menu();
   $('quit').onclick = () => app.menu();
   $('next').onclick = () => app.nextLevel();
@@ -960,6 +1177,7 @@
   $('save').onclick = saveScore;
   $('name').oninput = () => { $('nameMsg').textContent = ''; };
   $('boardBtn').onclick = () => showBoard(null, 'menu');
+  addEventListener('pagehide', () => net.leave());
   $('boardClose').onclick = () => show(boardBack);
   const muteBtn = $('mute');
   const showMute = () => { muteBtn.textContent = muted ? '🔇' : '🔊'; };
@@ -969,7 +1187,7 @@
   addEventListener('resize', () => app.layout());
 
   // test hook for automated checks
-  window.__s2 = { app, get games() { return games; }, LEVELS };
+  window.__s2 = { app, net, get games() { return games; }, LEVELS };
 
   app.menu();
   requestAnimationFrame(frame);
