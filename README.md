@@ -4,6 +4,9 @@
 
 A one-tap burger-stacking arcade game. Open `index.html` in any browser (no build step, works offline).
 
+**Stack It Up! 2** (`v2/index.html`, published at `/v2/`) adds a drop timer, three levels (Seattle streets,
+Tacoma skyline, the Mount Rainier climb), three lives, and a two-player head-to-head mode on one screen.
+
 ## Comeback
 
 A one-tap arcade game. Tap to throw a boomerang; it always comes back.

@@ -1,4 +1,4 @@
-# Publishes both games to GitHub Pages: Stack It Up! at the root, Comeback under /comeback/.
+# Publishes the games to GitHub Pages: Stack It Up! at the root, Stack It Up! 2 under /v2/, Comeback under /comeback/.
 name: Publish games to GitHub Pages
 
 on:
@@ -29,6 +29,8 @@ jobs:
           # Stack It Up! stays at the site root
           cp index.html _site/
           cp -r assets _site/
+          # Stack It Up! 2 (levels, drop timer, head to head) lives under /v2/
+          cp -r v2 _site/
           # Comeback lives under /comeback/
           cp -r www/. _site/comeback/
           cp docs/privacy.html _site/comeback/privacy.html
